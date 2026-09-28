@@ -10,3 +10,5 @@
 .local/
 frontend/test-results/
 frontend/playwright-report/
+*.log
+*.tsbuildinfo

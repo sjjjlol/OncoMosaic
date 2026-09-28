@@ -1,0 +1,11 @@
+export type Project = { id: string; name: string };
+export type TissueImage = { id: string; name: string; description: string; width: number; height: number; bandCount: number; pixelSizeUm: number; wavelengths: number[]; previewUrl: string };
+export type Rect = { x: number; y: number; width: number; height: number };
+export type Roi = Rect & { id: string; imageId: string; name: string; regionTag: string };
+export type Thresholds = { panck: number; cd8: number };
+export type Run = { runId: string; roiId: string; status: 'Queued'|'Running'|'Succeeded'|'Failed'; attempt: number; thresholds: Thresholds; createdAt: string; error: {message: string}|null };
+export type Cell = { cellId: string; localIndex: number; x: number; y: number; areaPx: number; intensities: {dapi: number; panck: number; cd8: number}; autoLabels: string; effectiveLabels: string; qualityFlag: string; contour: number[][] };
+export type Summary = { counts: {total: number; valid: number; excluded: number; panck: number; cd8: number; doublePositive: number; panckOnly: number; cd8Only: number; negative: number}; areaMm2: number; reviewVersion: number; panckFraction: number|null; cd8Fraction: number|null; panckDensity: number; cd8Density: number; meanNearestDistanceUm: number|null; nearestDistancesUm: number[]; regionTag: string; thresholds: Thresholds };
+export type Review = {version: number; cellId: string; newLabel: string; reason: string};
+export const labels: Record<string, string> = {negative: '双阴性', panck: 'panCK 单阳性', cd8: 'CD8 单阳性', 'double-positive': '双阳性', excluded: '排除'};
+export const colors: Record<string, string> = {negative: '#74acff', panck: '#ffb74d', cd8: '#42e1a7', 'double-positive': '#f284e4', excluded: '#969696'};

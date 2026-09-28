@@ -1,0 +1,59 @@
+name: oncomosaic
+services:
+  db:
+    image: mysql:8.4.8
+    environment:
+      MYSQL_DATABASE: oncomosaic
+      MYSQL_USER: oncomosaic
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-local-demo-only}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-local-root-demo-only}
+    volumes:
+      - database:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  inference:
+    build: ./inference
+    environment:
+      STORE_ROOT: /store
+    volumes:
+      - artifacts:/store
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  api:
+    build: ./backend
+    environment:
+      ConnectionStrings__Database: Server=db;Database=oncomosaic;User=oncomosaic;Password=${MYSQL_PASSWORD:-local-demo-only};AllowPublicKeyRetrieval=True
+      PYTHON_URL: http://inference:8000/
+      STORE_ROOT: /store
+      DEMO_FILE: /demo/sample-hsi.npz
+      Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Warning
+    volumes:
+      - artifacts:/store
+      - ./data:/demo:ro
+    depends_on:
+      db: {condition: service_healthy}
+      inference: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "dotnet", "OncoMosaic.Api.dll", "--healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+  web:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8088}:80"
+    depends_on:
+      api: {condition: service_healthy}
+    restart: unless-stopped
+volumes:
+  database:
+  artifacts:
