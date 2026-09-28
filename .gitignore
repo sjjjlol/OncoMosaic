@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/__pycache__/
+**/.pytest_cache/
+.venv/
+.env
+.DS_Store
+.local/
+frontend/test-results/
+frontend/playwright-report/
