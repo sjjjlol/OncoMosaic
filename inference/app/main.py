@@ -1,4 +1,5 @@
 import os
+import zipfile
 from pathlib import Path
 from uuid import UUID
 from fastapi import FastAPI
@@ -65,6 +66,6 @@ def analyze(request: AnalyzeRequest):
 
 @app.exception_handler(Exception)
 async def invalid_input(_, error):
-    if isinstance(error, (ValueError, OSError, KeyError)):
+    if isinstance(error, (ValueError, OSError, KeyError, zipfile.BadZipFile, EOFError)):
         return JSONResponse(status_code=422, content={'code': 'INVALID_IMAGE', 'message': str(error)})
     return JSONResponse(status_code=500, content={'code': 'INFERENCE_ERROR', 'message': '模拟分析失败，请检查服务日志'})

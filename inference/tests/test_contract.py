@@ -85,3 +85,21 @@ def test_all_supported_bands_have_three_finite_channels(bands):
 @pytest.mark.parametrize('key',['../x','/tmp/x','a/../../x','a\\b'])
 def test_file_traversal(store,key):
     with pytest.raises(ValueError): safe_path(store,key)
+
+def test_corrupt_archive_is_a_readable_validation_error(store,monkeypatch):
+    (store/'bad.npz').write_bytes(b'not a ZIP archive')
+    monkeypatch.setattr(main,'adapter',MockSpectralAdapter(store))
+    with TestClient(main.app,raise_server_exceptions=False) as client:
+        response=client.post('/v1/inspect',json={'imageKey':'bad.npz'})
+        assert response.status_code==422
+        assert response.json()['code']=='INVALID_IMAGE'
+
+def test_concurrent_retries_publish_once(store):
+    from concurrent.futures import ThreadPoolExecutor
+    adapter=MockSpectralAdapter(store)
+    run=str(uuid4())
+    def execute(_):return adapter.analyze('source.npz',dict(x=0,y=0,width=256,height=256),run,'mock-unmix-v1')
+    with ThreadPoolExecutor(2) as executor:
+        first,second=list(executor.map(execute,range(2)))
+    assert first==second
+    assert len(list((store/'runs').iterdir()))==1

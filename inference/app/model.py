@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import zipfile
 import hashlib
+from threading import Lock
 import numpy as np
 from PIL import Image, ImageDraw
 from skimage import measure, morphology
@@ -80,6 +81,7 @@ class SpectralAdapter(Protocol):
 class MockSpectralAdapter:
     def __init__(self, root: Path):
         self.root = root
+        self._analysis_lock = Lock()
 
     def inspect(self, image_key):
         path = safe_path(self.root, image_key)
@@ -89,6 +91,12 @@ class MockSpectralAdapter:
         return dict(width=cube.shape[1], height=cube.shape[0], bandCount=cube.shape[2], wavelengths=waves.tolist(), pixelSizeUm=pixel, previewKey=str(preview.relative_to(self.root)))
 
     def analyze(self, image_key, roi, run_id, model_version):
+        # A timed-out/restarted API may retry while its previous HTTP call is finishing.
+        # Serialize publication so both calls observe the same committed manifest.
+        with self._analysis_lock:
+            return self._analyze(image_key, roi, run_id, model_version)
+
+    def _analyze(self, image_key, roi, run_id, model_version):
         if model_version != MODEL:
             raise ValueError('不支持的模型版本')
         source = safe_path(self.root, image_key)
