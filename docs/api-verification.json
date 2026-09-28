@@ -1,0 +1,43 @@
+{
+  "passed": true,
+  "runId": "7060f54a-79e2-467c-9cdb-fdcb3694c27b",
+  "cellCount": 69,
+  "originalCounts": {
+    "total": 69,
+    "valid": 69,
+    "excluded": 0,
+    "panck": 51,
+    "cd8": 20,
+    "doublePositive": 15,
+    "panckOnly": 36,
+    "cd8Only": 5,
+    "negative": 13
+  },
+  "reviewedCounts": {
+    "total": 69,
+    "valid": 68,
+    "excluded": 1,
+    "panck": 50,
+    "cd8": 20,
+    "doublePositive": 15,
+    "panckOnly": 35,
+    "cd8Only": 5,
+    "negative": 13
+  },
+  "retry": {
+    "runId": "4c9bd095-657c-4455-97c1-b96ef154345c",
+    "attempt": 2,
+    "cellCount": 69
+  },
+  "checks": [
+    "ROI bounds",
+    "live Python call",
+    "original coordinates",
+    "physical units",
+    "review ordering",
+    "auto-result immutability",
+    "historical CSV/PNG/JSON exports",
+    "threshold version",
+    "missing nearest-neighbor null"
+  ]
+}
