@@ -6,6 +6,10 @@
 
 ![浏览器实际操作截图](docs/browser-workflow.png)
 
+## 项目文档
+
+完整的 [项目学习与讲解手册](docs/PROJECT_GUIDE.md) 包含：架构与数据模型、医学概念、带实际截图的核心功能、实现流程图、技术取舍，以及面试介绍与追问。
+
 ## 一键运行
 
 需要 Docker Engine / Docker Desktop 和 Compose v2。无需在宿主机安装 .NET、Python、Node 或 MySQL。
