@@ -36,13 +36,15 @@ public class InferenceClient(HttpClient client)
 public class ImportService(AppDb db, FileStore store, InferenceClient python)
 {
     public const long MaxBytes = 50 * 1024 * 1024;
-    public async Task<TissueImage> Import(Guid projectId, string name, string description, Stream input, CancellationToken ct, Guid? fixedId = null)
+    public async Task<TissueImage> Import(Guid projectId, string name, string description, Stream input, Stream assayInput, CancellationToken ct, Guid? fixedId = null)
     {
         if (!await db.Projects.AnyAsync(p => p.Id == projectId, ct)) throw new ApiError(404, "NOT_FOUND", "项目不存在");
         if (string.IsNullOrWhiteSpace(name) || name.Length > 160 || description.Length > 2000) throw new ApiError(400, "INVALID_NAME", "图像名称必填且最多 160 字，说明最多 2000 字");
         var id = fixedId ?? Guid.NewGuid();
-        var tempKey = $"staging/{Guid.NewGuid()}/source.npz";
+        var tempKey = $"staging/{Guid.NewGuid()}/source.ome.tiff";
+        var assayKey = tempKey.Replace("source.ome.tiff", "source.assay.json");
         var temp = store.Resolve(tempKey);
+        var tempAssay = store.Resolve(assayKey);
         Directory.CreateDirectory(Path.GetDirectoryName(temp)!);
         string? destination = null;
         try
@@ -57,10 +59,20 @@ public class ImportService(AppDb db, FileStore store, InferenceClient python)
                     await file.WriteAsync(buffer.AsMemory(0, count), ct);
                 }
             }
-            var info = await python.Post<InspectResult>("v1/inspect", new { imageKey = tempKey }, ct);
-            if (info.Width is < 1 or > 2048 || info.Height is < 1 or > 2048 || info.BandCount is < 3 or > 64 || !double.IsFinite(info.PixelSizeUm) || info.PixelSizeUm <= 0 || info.PreviewKey != tempKey.Replace("source.npz", "preview.png")) throw new ApiError(502, "INVALID_METADATA", "Python 返回无效图像元数据");
+            await using (var file = File.Create(tempAssay))
+            {
+                var buffer = new byte[81920]; long total = 0; int count;
+                while ((count = await assayInput.ReadAsync(buffer, ct)) > 0)
+                {
+                    total += count;
+                    if (total > 100_000) throw new ApiError(413, "FILE_TOO_LARGE", "伴随元数据不得超过 100 KB");
+                    await file.WriteAsync(buffer.AsMemory(0, count), ct);
+                }
+            }
+            var info = await python.Post<InspectResult>("v1/inspect", new { imageKey = tempKey, assayKey }, ct);
+            if (info.Width is < 1 or > 2048 || info.Height is < 1 or > 2048 || info.BandCount is < 8 or > 64 || !double.IsFinite(info.PixelSizeUm) || info.PixelSizeUm <= 0 || info.PreviewKey != tempKey.Replace("source.ome.tiff", "preview.png") || info.Wavelengths.Length != info.BandCount) throw new ApiError(502, "INVALID_METADATA", "Python 返回无效图像元数据");
             store.Existing(info.PreviewKey);
-            var image = new TissueImage { Id = id, ProjectId = projectId, Name = name.Trim(), Description = description, FileKey = $"images/{id}/source.npz", PreviewKey = $"images/{id}/preview.png", Sha256 = FileStore.Hash(temp), Width = info.Width, Height = info.Height, BandCount = info.BandCount, PixelSizeUm = info.PixelSizeUm, WavelengthsJson = Json.Write(info.Wavelengths) };
+            var image = new TissueImage { Id = id, ProjectId = projectId, Name = name.Trim(), Description = description, FileKey = $"images/{id}/source.ome.tiff", AssayKey = $"images/{id}/source.assay.json", AssaySha256 = FileStore.Hash(tempAssay), AcquisitionJson = info.Acquisition.GetRawText(), PreviewKey = $"images/{id}/preview.png", Sha256 = FileStore.Hash(temp), Width = info.Width, Height = info.Height, BandCount = info.BandCount, PixelSizeUm = info.PixelSizeUm, WavelengthsJson = Json.Write(info.Wavelengths) };
             destination = Path.GetDirectoryName(store.Resolve(image.FileKey))!;
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             Directory.Move(Path.GetDirectoryName(temp)!, destination);

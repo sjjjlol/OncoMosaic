@@ -1,33 +1,31 @@
 {
   "passed": true,
-  "runId": "7060f54a-79e2-467c-9cdb-fdcb3694c27b",
-  "cellCount": 69,
+  "runId": "6336c8b0-97df-4375-a2ad-4bd3bc757d1a",
+  "cellCount": 76,
   "originalCounts": {
-    "total": 69,
-    "valid": 69,
+    "total": 76,
+    "valid": 64,
     "excluded": 0,
-    "panck": 51,
-    "cd8": 20,
-    "doublePositive": 15,
-    "panckOnly": 36,
-    "cd8Only": 5,
-    "negative": 13
+    "unclassified": 12,
+    "panck": 43,
+    "cd3Cd8": 18,
+    "cd3Only": 0,
+    "negative": 3
   },
   "reviewedCounts": {
-    "total": 69,
-    "valid": 68,
+    "total": 76,
+    "valid": 63,
     "excluded": 1,
-    "panck": 50,
-    "cd8": 20,
-    "doublePositive": 15,
-    "panckOnly": 35,
-    "cd8Only": 5,
-    "negative": 13
+    "unclassified": 12,
+    "panck": 42,
+    "cd3Cd8": 18,
+    "cd3Only": 0,
+    "negative": 3
   },
   "retry": {
-    "runId": "4c9bd095-657c-4455-97c1-b96ef154345c",
+    "runId": "4635864a-9c10-43c9-8843-d2f32ddebb90",
     "attempt": 2,
-    "cellCount": 69
+    "cellCount": 76
   },
   "checks": [
     "ROI bounds",

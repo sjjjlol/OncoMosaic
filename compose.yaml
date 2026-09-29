@@ -33,7 +33,7 @@ services:
       ConnectionStrings__Database: Server=db;Database=oncomosaic;User=oncomosaic;Password=${MYSQL_PASSWORD:-local-demo-only};AllowPublicKeyRetrieval=True
       PYTHON_URL: http://inference:8000/
       STORE_ROOT: /store
-      DEMO_FILE: /demo/sample-hsi.npz
+      DEMO_FILE: /demo/sample-spectral-mif.ome.tiff
       Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Warning
     volumes:
       - artifacts:/store

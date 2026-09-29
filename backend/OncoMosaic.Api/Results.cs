@@ -25,7 +25,7 @@ public class ResultService(AppDb db, FileStore store)
         var cells = await db.Cells.AsNoTracking().Where(c => c.RunId == id).OrderBy(c => c.LocalIndex).ToListAsync(ct);
         var thresholds = Json.Read<Thresholds>(run.ThresholdsJson);
         var views = Quantification.Views(cells, thresholds, effective);
-        return new(run, roi, image, views, Quantification.Calculate(views, roi, image.PixelSizeUm, thresholds, version), changes.Cast<object>().ToArray());
+        return new(run, roi, image, views, Quantification.Calculate(views, roi, image.PixelSizeUm, run.ValidTissuePx, thresholds, version), changes.Cast<object>().ToArray());
     }
     public async Task<byte[]> Export(Guid id, int? version, CancellationToken ct)
     {
@@ -35,20 +35,22 @@ public class ResultService(AppDb db, FileStore store)
         {
             void Text(string name, string content) { using var writer = new StreamWriter(zip.CreateEntry(name).Open(), new UTF8Encoding(true)); writer.Write(content); }
             string N(double value) => value.ToString("R", CultureInfo.InvariantCulture);
-            var csv = new StringBuilder("cellId,localIndex,x_px,y_px,area_px,dapi_nuclear,panck_perinuclear,cd8_perinuclear,auto_label,effective_label,quality_flag,review_version,notice\n");
+            var csv = new StringBuilder("cellId,localIndex,x_px,y_px,area_px,dapi_nuclear,panck_near_nucleus,cd3_near_nucleus,cd8_near_nucleus,auto_label,effective_label,quality_flag,review_version,notice\n");
             foreach (var c in s.Cells)
             {
                 var values = Json.Read<Dictionary<string, double>>(Json.Write(c.Intensities));
-                csv.AppendLine(string.Join(',', c.CellId, c.LocalIndex, N(c.X), N(c.Y), c.AreaPx, N(values["dapi"]), N(values["panck"]), N(values["cd8"]), c.AutoLabels, c.EffectiveLabels, c.QualityFlag, s.Summary.ReviewVersion, Quantification.Notice));
+                csv.AppendLine(string.Join(',', c.CellId, c.LocalIndex, N(c.X), N(c.Y), c.AreaPx, N(values["dapi"]), N(values["panck"]), N(values["cd3"]), N(values["cd8"]), c.AutoLabels, c.EffectiveLabels, c.QualityFlag, s.Summary.ReviewVersion, Quantification.Notice));
             }
             Text("cells.csv", csv.ToString());
             var q = s.Summary;
-            Text("roi-summary.csv", "run_id,review_version,total,valid,excluded,panck,cd8,double_positive,panck_only,cd8_only,negative,area_mm2,panck_fraction,cd8_fraction,panck_density,cd8_density,mean_nearest_distance_um,notice\n" + string.Join(',', id, q.ReviewVersion, q.Counts.Total, q.Counts.Valid, q.Counts.Excluded, q.Counts.Panck, q.Counts.Cd8, q.Counts.DoublePositive, q.Counts.PanckOnly, q.Counts.Cd8Only, q.Counts.Negative, N(q.AreaMm2), q.PanckFraction is double pf ? N(pf) : "", q.Cd8Fraction is double cf ? N(cf) : "", N(q.PanckDensity), N(q.Cd8Density), q.MeanNearestDistanceUm is double d ? N(d) : "", Quantification.Notice) + "\n");
-            Text("method.json", Json.Write(new { notice = Quantification.Notice, runId = id, imageSha256 = s.Image.Sha256, roi = s.Roi, s.Image.PixelSizeUm, wavelengthsNm = Json.Read<double[]>(s.Image.WavelengthsJson), s.Run.ModelVersion, s.Run.AlgorithmVersion, q.Thresholds, q.ReviewVersion, generatedAt = DateTime.UtcNow, measurements = new { dapi = "nuclear mean", panckAndCd8 = "nucleus plus 3px dilation excluding neighboring nuclei; approximate, not cell segmentation", detection = "DAPI >= 0.32, 8-connected components, area 5..400px", unmix = "fixed equal-weight spectral groups, clip to [0,1]", display = "linear 0..1 to 8-bit; never used for statistics", distance = "CD8-positive to nearest panCK-positive; self included for double-positive objects" }, summary = q, reviews = s.Reviews, overlayLegend = new { panck = "orange", cd8 = "green", doublePositive = "pink", negative = "blue", excluded = "gray cross" } }));
+            Text("roi-summary.csv", "run_id,review_version,total,valid,excluded,unclassified,panck,cd3_cd8,cd3_only,negative,valid_tissue_area_mm2,panck_fraction,cd3_cd8_fraction,panck_density,cd3_cd8_density,mean_nearest_distance_um,notice\n" + string.Join(',', id, q.ReviewVersion, q.Counts.Total, q.Counts.Valid, q.Counts.Excluded, q.Counts.Unclassified, q.Counts.Panck, q.Counts.Cd3Cd8, q.Counts.Cd3Only, q.Counts.Negative, N(q.AreaMm2), q.PanckFraction is double pf ? N(pf) : "", q.Cd3Cd8Fraction is double cf ? N(cf) : "", N(q.PanckDensity), N(q.Cd3Cd8Density), q.MeanNearestDistanceUm is double d ? N(d) : "", Quantification.Notice) + "\n");
+            var qc = Json.Read<object>(File.ReadAllText(store.Existing((await db.Artifacts.AsNoTracking().SingleAsync(a => a.RunId == id && a.Kind == "qc", ct)).FileKey)));
+            Text("qc.json", Json.Write(qc));
+            Text("method.json", Json.Write(new { notice = Quantification.Notice, runId = id, imageSha256 = s.Image.Sha256, assaySha256 = s.Image.AssaySha256, acquisition = Json.Read<object>(s.Image.AcquisitionJson), roi = s.Roi, s.Image.PixelSizeUm, wavelengthsNm = Json.Read<double[]>(s.Image.WavelengthsJson), s.Run.ModelVersion, s.Run.AlgorithmVersion, q.Thresholds, q.ReviewVersion, validTissuePx = s.Run.ValidTissuePx, generatedAt = DateTime.UtcNow, measurements = new { dapi = "nuclear mean", markers = "nucleus plus 3px dilation excluding neighboring nuclei; approximate, not whole-cell segmentation", unmix = "fit supplied simulated single-stain spectra plus autofluorescence", tissue = "autofluorescence threshold and saturation exclusion; valid tissue denominator", distance = "CD3+CD8+ candidate to nearest distinct panCK+ object" }, summary = q, reviews = s.Reviews }));
             using var overlay = Image.Load<Rgba32>(store.Existing(s.Image.PreviewKey));
-            overlay.Metadata.GetPngMetadata().TextData.Add(new PngTextData("Description", "Synthetic data / Mock model / NOT FOR DIAGNOSIS", "", ""));
+            overlay.Metadata.GetPngMetadata().TextData.Add(new PngTextData("Description", "Synthetic spectral mIF / Simulated analysis / NOT FOR DIAGNOSIS", "", ""));
             overlay.Metadata.GetPngMetadata().TextData.Add(new PngTextData("Analysis", $"runId={id}; reviewVersion={q.ReviewVersion}", "", ""));
-            static Rgba32 Color(string label) => label switch { "panck" => new(255, 183, 77), "cd8" => new(66, 225, 167), "double-positive" => new(242, 132, 228), "excluded" => new(150, 150, 150), _ => new(116, 172, 255) };
+            static Rgba32 Color(string label) => label switch { "panck" => new(255, 183, 77), "cd3-cd8" => new(66, 225, 167), "cd3" => new(242, 132, 228), "unclassified" => new(200, 160, 100), "excluded" => new(150, 150, 150), _ => new(116, 172, 255) };
             void Dot(int x, int y, Rgba32 color) { if (x >= 0 && y >= 0 && x < overlay.Width && y < overlay.Height) overlay[x, y] = color; }
             foreach (var c in s.Cells)
             {

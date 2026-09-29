@@ -62,6 +62,9 @@ namespace OncoMosaic.Api.Migrations
                         .IsRequired()
                         .HasColumnType("longtext");
 
+                    b.Property<int>("ValidTissuePx")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
 
                     b.HasIndex("RoiId");
@@ -107,6 +110,9 @@ namespace OncoMosaic.Api.Migrations
 
                     b.Property<int>("AreaPx")
                         .HasColumnType("int");
+
+                    b.Property<double>("Cd3Value")
+                        .HasColumnType("double");
 
                     b.Property<double>("Cd8Value")
                         .HasColumnType("double");
@@ -259,6 +265,18 @@ namespace OncoMosaic.Api.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("char(36)");
+
+                    b.Property<string>("AcquisitionJson")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AssayKey")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("AssaySha256")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<int>("BandCount")
                         .HasColumnType("int");

@@ -43,18 +43,18 @@ app.MapPost("/api/projects", async (ProjectInput input, AppDb db) =>
     if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 120) throw new ApiError(400, "INVALID_NAME", "项目名称必填且最多 120 字");
     var p = new Project { Name = input.Name.Trim() }; db.Projects.Add(p); await db.SaveChangesAsync(); return Results.Created($"/api/projects/{p.Id}", p);
 });
-static object ImageDto(TissueImage i) => new { i.Id, i.ProjectId, i.Name, i.Description, i.Width, i.Height, i.BandCount, i.PixelSizeUm, wavelengths = Json.Read<double[]>(i.WavelengthsJson), i.Sha256, i.CreatedAt, previewUrl = $"/api/images/{i.Id}/preview", notice = Quantification.Notice };
-app.MapGet("/api/projects/{id:guid}/images", async (Guid id, AppDb db) => (await db.Images.Where(i => i.ProjectId == id).OrderBy(i => i.CreatedAt).ToListAsync()).Select(ImageDto));
+static object ImageDto(TissueImage i) => new { i.Id, i.ProjectId, i.Name, i.Description, i.Width, i.Height, i.BandCount, i.PixelSizeUm, wavelengths = Json.Read<double[]>(i.WavelengthsJson), acquisition = Json.Read<object>(i.AcquisitionJson), i.Sha256, i.AssaySha256, i.CreatedAt, previewUrl = $"/api/images/{i.Id}/preview", notice = Quantification.Notice };
+app.MapGet("/api/projects/{id:guid}/images", async (Guid id, AppDb db) => (await db.Images.Where(i => i.ProjectId == id && i.AssayKey != "").OrderBy(i => i.CreatedAt).ToListAsync()).Select(ImageDto));
 app.MapPost("/api/projects/{id:guid}/images", async (Guid id, HttpRequest request, ImportService imports, CancellationToken ct) =>
 {
-    var form = await request.ReadFormAsync(ct); var file = form.Files.GetFile("file");
-    if (file == null || !file.FileName.EndsWith(".npz", StringComparison.OrdinalIgnoreCase)) throw new ApiError(400, "INVALID_FILE", "请选择 .npz 文件");
-    if (file.Length > ImportService.MaxBytes) throw new ApiError(413, "FILE_TOO_LARGE", "文件不得超过 50 MB");
-    await using var stream = file.OpenReadStream();
-    var image = await imports.Import(id, form["name"].ToString() is { Length: > 0 } name ? name : Path.GetFileNameWithoutExtension(file.FileName), form["description"].ToString(), stream, ct);
+    var form = await request.ReadFormAsync(ct); var file = form.Files.GetFile("file"); var assay = form.Files.GetFile("assay");
+    if (file == null || !file.FileName.EndsWith(".ome.tiff", StringComparison.OrdinalIgnoreCase) || assay == null || !assay.FileName.EndsWith(".assay.json", StringComparison.OrdinalIgnoreCase)) throw new ApiError(400, "INVALID_FILE", "请选择 .ome.tiff 图像及 .assay.json 伴随文件");
+    if (file.Length > ImportService.MaxBytes || assay.Length > 100_000) throw new ApiError(413, "FILE_TOO_LARGE", "图像不得超过 50 MB，伴随元数据不得超过 100 KB");
+    await using var stream = file.OpenReadStream(); await using var assayStream = assay.OpenReadStream();
+    var image = await imports.Import(id, form["name"].ToString() is { Length: > 0 } name ? name : file.FileName[..^9], form["description"].ToString(), stream, assayStream, ct);
     return Results.Created($"/api/images/{image.Id}", ImageDto(image));
 }).DisableAntiforgery();
-app.MapGet("/api/images/{id:guid}", async (Guid id, AppDb db) => ImageDto(await db.Images.FindAsync(id) ?? throw new ApiError(404, "NOT_FOUND", "图像不存在")));
+app.MapGet("/api/images/{id:guid}", async (Guid id, AppDb db) => ImageDto(await db.Images.SingleOrDefaultAsync(i => i.Id == id && i.AssayKey != "") ?? throw new ApiError(404, "NOT_FOUND", "新版图像不存在")));
 app.MapGet("/api/images/{id:guid}/preview", async (Guid id, AppDb db, FileStore store) =>
 {
     var image = await db.Images.FindAsync(id) ?? throw new ApiError(404, "NOT_FOUND", "图像不存在"); return Results.File(store.Existing(image.PreviewKey), "image/png");
@@ -73,7 +73,7 @@ app.MapGet("/api/images/{id:guid}/analysis-runs", async (Guid id, AppDb db) => (
 app.MapPost("/api/analysis-runs", async (RunInput input, AppDb db) =>
 {
     var roi = await db.Rois.FindAsync(input.RoiId) ?? throw new ApiError(404, "NOT_FOUND", "ROI 不存在");
-    if (roi.ImageId != input.ImageId || input.ModelVersion != "mock-unmix-v1" || input.Thresholds == null || !input.Thresholds.Valid()) throw new ApiError(400, "INVALID_ANALYSIS", "图像、模型版本或阈值无效；阈值必须在 0–1 内");
+    if (roi.ImageId != input.ImageId || input.ModelVersion != "spectral-mif-sim-v1" || input.Thresholds == null || !input.Thresholds.Valid()) throw new ApiError(400, "INVALID_ANALYSIS", "图像、模型版本或阈值无效；阈值必须在 0–1 内");
     var run = new AnalysisRun { RoiId = roi.Id, ThresholdsJson = Json.Write(input.Thresholds) };
     db.AnalysisRuns.Add(run); await db.SaveChangesAsync(); return Results.Accepted($"/api/analysis-runs/{run.Id}", RunDto(run));
 });
@@ -89,7 +89,7 @@ app.MapGet("/api/analysis-runs/{id:guid}/artifacts/{kind}", async (Guid id, stri
 {
     if (!await db.AnalysisRuns.AnyAsync(r => r.Id == id && r.Status == "Succeeded")) throw new ApiError(409, "NOT_READY", "任务尚未成功");
     var a = await db.Artifacts.SingleOrDefaultAsync(a => a.RunId == id && a.Kind == kind) ?? throw new ApiError(404, "NOT_FOUND", "结果文件不存在");
-    return Results.File(store.Existing(a.FileKey), kind == "mask" ? "application/octet-stream" : kind == "cells" ? "application/json" : "image/png");
+    return Results.File(store.Existing(a.FileKey), kind == "mask" ? "application/octet-stream" : kind is "cells" or "qc" ? "application/json" : "image/png");
 });
 app.MapGet("/api/analysis-runs/{id:guid}/cells", async (Guid id, int? reviewVersion, double? x, double? y, double? width, double? height, ResultService results, CancellationToken ct) =>
 {
@@ -117,16 +117,17 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<AppDb>();
     await db.Database.MigrateAsync();
     var projectId = Guid.Parse("a1000000-0000-0000-0000-000000000001");
-    var imageId = Guid.Parse("a1000000-0000-0000-0000-000000000002");
+    var imageId = Guid.Parse("a1000000-0000-0000-0000-000000000003");
     if (!await db.Projects.AnyAsync(p => p.Id == projectId)) { db.Projects.Add(new Project { Id = projectId, Name = "多标记组织 · 演示项目" }); await db.SaveChangesAsync(); }
-    var fixture = builder.Configuration["DEMO_FILE"] ?? "/demo/sample-hsi.npz";
-    if (File.Exists(fixture) && !await db.Images.AnyAsync(i => i.Id == imageId))
+    var fixture = builder.Configuration["DEMO_FILE"] ?? "/demo/sample-spectral-mif.ome.tiff";
+    var fixtureAssay = fixture.Replace(".ome.tiff", ".assay.json");
+    if (File.Exists(fixture) && File.Exists(fixtureAssay) && !await db.Images.AnyAsync(i => i.Id == imageId))
     {
         var store = scope.ServiceProvider.GetRequiredService<FileStore>();
-        var orphan = Path.GetDirectoryName(store.Resolve($"images/{imageId}/source.npz"))!;
+        var orphan = Path.GetDirectoryName(store.Resolve($"images/{imageId}/source.ome.tiff"))!;
         if (Directory.Exists(orphan)) Directory.Delete(orphan, true);
-        await using var stream = File.OpenRead(fixture);
-        await scope.ServiceProvider.GetRequiredService<ImportService>().Import(projectId, "合成组织 · sample-hsi", "固定种子生成的 16 波段合成演示图像，无患者来源。", stream, CancellationToken.None, imageId);
+        await using var stream = File.OpenRead(fixture); await using var assayStream = File.OpenRead(fixtureAssay);
+        await scope.ServiceProvider.GetRequiredService<ImportService>().Import(projectId, "合成光谱 mIF · sample", "24 波段 OME-TIFF 与模拟单染对照；无患者来源。", stream, assayStream, CancellationToken.None, imageId);
     }
 }
 app.Run();
