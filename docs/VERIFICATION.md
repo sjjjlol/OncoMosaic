@@ -14,3 +14,25 @@
 API 验收使用默认合成 OME-TIFF，ROI `(20,30,180,160)`，panCK/CD3/CD8 阈值均为 `0.35`。结果：总核对象 76、可分类 64、无法判定 12；panCK⁺ 候选 43、CD3⁺CD8⁺ 候选 18。v1 排除一个对象后可分类 63，v0 仍可导出。故障测试中 Python 停止后任务失败，恢复并重试同一 runId 后 `attempt=2`，对象未重复。有效组织面积小于完整矩形的 `0.0072 mm²`，由有效组织像素数换算；精确值见 [机器可读报告](api-verification.json)。
 
 [浏览器截图](browser-workflow.png)和 [1366×768 截图](browser-1366x768.png)由本轮 Playwright 测试生成。它们验证交互，不验证医学正确性。没有真实染色数据、病理参考标注或临床性能测试；对真实研究图像的准确性仍未知。
+
+## 2026-09-29：GitHub Actions 缺失提交文件修复
+
+失败运行：[36586410056](https://github.com/sjjjlol/OncoMosaic/actions/runs/36586410056)，提交 `eebf220`。Python 测试出现 8 个准备阶段错误，均为缺少 `data/sample-spectral-mif.ome.tiff`。本地样例存在，但未被 Git 跟踪，因此 Actions 的干净检出没有这些文件。
+
+同一轮检查还发现新版 EF Core 迁移的主文件与 Designer 文件未纳入 Git；已提交的模型快照不能代替可执行迁移，旧数据库也会掩盖这个问题。
+
+修复内容：
+
+- 将合成主图、assay、对照、真值及两份新版迁移文件加入版本控制。
+- 新增 `MigrationTests.CleanDatabaseMigrationIncludesSpectralAnalysisColumns`，生成实际建库 SQL 并检查新版字段，不连接数据库。该测试在缺少迁移的干净副本中失败，补齐迁移后通过。
+- 使用仅由 Git 暂存区导出的副本验证，避免读取未跟踪的本地文件。Python 8 项、.NET 6 项、前端 3 项及生产构建通过；独立 Compose 项目使用新建数据库成功启动并完成迁移。
+
+补充验证：独立环境的 API 整链路与 `--faults` 检查通过，包括停止 Python 后失败、重试、数据库/API 重启及历史导出。浏览器流程在本机 Chrome 上复查通过（1 项）。首次浏览器运行期间，本机 ARM64 Docker 中 API 曾以退出码 132（非法指令）重启并返回 502；复跑成功不代表该本地运行时问题已解决。Playwright 自带 Chromium 本机未安装，此次使用已安装 Chrome，不能代替 GitHub 的 Ubuntu/Chromium 运行结果。
+
+### 提交前怎样避免同类问题
+
+`git commit -am` 不会自动加入新文件。提交前运行 `git status --short`，检查样例、迁移等必要文件是否仍为 `??`，并用 `git diff --cached --stat` 检查实际提交范围。IDE 个人配置不需要因此一起加入。
+
+复现 CI 时使用干净检出和独立数据库；直接在含未跟踪文件、已迁移数据库的开发目录运行，不能证明 GitHub 上的检出也完整。新增数据文件必须保持图像与 assay 哈希匹配，不应通过跳过测试或修改校验值来绕过失败。
+
+本节记录本地修复验证，不表示原失败运行已经变绿；修复提交推送后，GitHub Actions 才会产生新的远端结果。

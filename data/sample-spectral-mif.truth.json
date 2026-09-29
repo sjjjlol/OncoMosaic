@@ -1,0 +1,515 @@
+{
+  "truthImage": "sample-spectral-mif.truth.ome.tiff",
+  "regionCodes": {
+    "0": "excluded",
+    "1": "synthetic-epithelial-side",
+    "2": "synthetic-stroma-side"
+  },
+  "cells": [
+    {
+      "x": 74.4,
+      "y": 38.14,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 94.06,
+      "y": 35.36,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 111.0,
+      "y": 37.16,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 131.45,
+      "y": 37.62,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 151.74,
+      "y": 36.15,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 170.06,
+      "y": 37.68,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 57.21,
+      "y": 55.18,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 74.15,
+      "y": 57.73,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 95.59,
+      "y": 55.29,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 112.78,
+      "y": 54.83,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 130.59,
+      "y": 54.28,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 152.04,
+      "y": 57.91,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 168.75,
+      "y": 55.93,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 187.89,
+      "y": 55.18,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 206.16,
+      "y": 55.02,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 37.59,
+      "y": 73.11,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 55.75,
+      "y": 74.86,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 74.16,
+      "y": 75.33,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 111.33,
+      "y": 73.8,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 132.29,
+      "y": 74.1,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 152.83,
+      "y": 75.72,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 169.46,
+      "y": 73.05,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 188.77,
+      "y": 74.13,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 208.54,
+      "y": 74.25,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 35.92,
+      "y": 94.88,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 56.55,
+      "y": 92.29,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 76.34,
+      "y": 93.66,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 112.57,
+      "y": 95.47,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 133.39,
+      "y": 95.55,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 150.15,
+      "y": 95.98,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 171.46,
+      "y": 92.94,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 187.26,
+      "y": 93.13,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 207.27,
+      "y": 95.13,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 226.85,
+      "y": 92.83,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 17.26,
+      "y": 111.33,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 37.38,
+      "y": 112.07,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 56.29,
+      "y": 111.08,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 74.81,
+      "y": 113.54,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 92.92,
+      "y": 113.78,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 112.88,
+      "y": 113.47,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 130.88,
+      "y": 111.16,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 150.84,
+      "y": 111.56,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 171.68,
+      "y": 113.52,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 189.69,
+      "y": 114.41,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 209.41,
+      "y": 114.83,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 225.61,
+      "y": 114.57,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 17.93,
+      "y": 132.58,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 38.76,
+      "y": 130.41,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 55.94,
+      "y": 130.42,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 76.5,
+      "y": 130.73,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 93.56,
+      "y": 130.89,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 111.51,
+      "y": 131.93,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 132.39,
+      "y": 133.85,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 150.2,
+      "y": 131.41,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 189.35,
+      "y": 131.08,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 207.95,
+      "y": 133.8,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 226.69,
+      "y": 132.55,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 19.54,
+      "y": 151.33,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 37.08,
+      "y": 149.64,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 54.52,
+      "y": 151.91,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 74.58,
+      "y": 150.55,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 93.57,
+      "y": 150.51,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 112.32,
+      "y": 151.9,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 131.85,
+      "y": 149.64,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 151.19,
+      "y": 149.22,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 188.54,
+      "y": 152.63,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 208.23,
+      "y": 150.18,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 226.32,
+      "y": 150.69,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 37.14,
+      "y": 169.61,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 56.84,
+      "y": 169.88,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 74.55,
+      "y": 170.13,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 94.57,
+      "y": 171.53,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 111.29,
+      "y": 169.45,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 132.35,
+      "y": 169.25,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 151.87,
+      "y": 170.43,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 170.0,
+      "y": 171.15,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 189.02,
+      "y": 169.56,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 207.65,
+      "y": 171.25,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 228.2,
+      "y": 171.95,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 37.48,
+      "y": 189.35,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 55.09,
+      "y": 188.52,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 76.58,
+      "y": 189.84,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 92.47,
+      "y": 190.32,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 112.71,
+      "y": 187.75,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 132.39,
+      "y": 190.98,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 151.44,
+      "y": 190.32,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 170.09,
+      "y": 189.8,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 188.73,
+      "y": 189.86,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 207.99,
+      "y": 188.69,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 55.62,
+      "y": 208.46,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 73.47,
+      "y": 207.83,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 93.09,
+      "y": 209.38,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 111.36,
+      "y": 207.05,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 133.69,
+      "y": 208.74,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 152.48,
+      "y": 209.39,
+      "syntheticClass": "other"
+    },
+    {
+      "x": 171.56,
+      "y": 207.9,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 190.21,
+      "y": 208.49,
+      "syntheticClass": "cd3-cd8"
+    },
+    {
+      "x": 94.98,
+      "y": 227.76,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 112.88,
+      "y": 228.0,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 131.97,
+      "y": 226.26,
+      "syntheticClass": "epithelial"
+    },
+    {
+      "x": 149.42,
+      "y": 226.4,
+      "syntheticClass": "other"
+    }
+  ]
+}
