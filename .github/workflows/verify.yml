@@ -19,6 +19,7 @@ jobs:
         working-directory: frontend
       - run: docker compose up --build -d --wait --wait-timeout 180
       - run: python scripts/verify_e2e.py --faults
+      - run: python scripts/verify_comparison.py
       - run: npx playwright install --with-deps chromium && npm run test:e2e
         working-directory: frontend
         env: {PW_CHANNEL: chromium}
@@ -29,6 +30,7 @@ jobs:
           path: |
             docs/*.png
             docs/api-verification.json
+            docs/comparison-verification.json
             frontend/test-results/
       - run: docker compose logs --no-color > compose-test.log && docker compose down
         if: always()

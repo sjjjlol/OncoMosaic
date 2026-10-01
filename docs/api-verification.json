@@ -1,6 +1,6 @@
 {
   "passed": true,
-  "runId": "6336c8b0-97df-4375-a2ad-4bd3bc757d1a",
+  "runId": "ae4bc132-c545-4ed4-b6a1-746cfacd7a64",
   "cellCount": 76,
   "originalCounts": {
     "total": 76,
@@ -22,11 +22,7 @@
     "cd3Only": 0,
     "negative": 3
   },
-  "retry": {
-    "runId": "4635864a-9c10-43c9-8843-d2f32ddebb90",
-    "attempt": 2,
-    "cellCount": 76
-  },
+  "retry": null,
   "checks": [
     "ROI bounds",
     "live Python call",

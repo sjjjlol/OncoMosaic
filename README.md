@@ -1,6 +1,6 @@
 # OncoMosaic
 
-多重免疫荧光（mIF）光谱图像的**科研流程模拟平台**。它导入 OME-TIFF 局部视野和染色/校准伴随文件，完成 ROI 圈选、参考光谱拟合、有效组织与核对象检测、四标记测量、规则分类、质控、人工复核和版本化导出。
+多重免疫荧光（mIF）光谱图像的**科研流程模拟平台**。它导入 OME-TIFF 局部视野和染色/校准伴随文件，完成 ROI 圈选、参考光谱拟合、有效组织与核对象检测、四标记测量、规则分类、质控、人工复核、双 ROI 对比、对象联动探索和版本化导出。
 
 **仓库数据全部由程序合成，没有患者来源。`spectral-mif-sim-v1` 是确定性模拟分析器，不是训练好的医学模型；结果没有经过医学性能验证，不用于诊断。** 核周测量区不等于完整细胞边界；panCK⁺ 和 CD3⁺CD8⁺ 只表示候选表型。
 
@@ -55,9 +55,17 @@ API Dockerfile 在 Apple Silicon 虚拟化环境关闭 .NET Arm64 SVE 指令路�
 
 质量标志 `ok` 只表示未触发当前规则，不意味着医学质量合格。有效组织和表型均为模拟规则结果。真实科研使用仍需真实染色/扫描数据、参考标注、批次质控和独立验证；临床用途另需针对预定用途验证。[SITC 图像分析建议](https://jitc.bmj.com/content/13/1/e008875) · [STORMI 报告标准](https://jitc.bmj.com/content/13/12/e012280)
 
+## 多区域比较与结果探索
+
+在同一图像中完成两个不同 ROI 的分析后，点击结果区的 **比较区域**，选择两侧分析记录与复核版本，再点击 **比较所选区域**。可并排查看数量、比例、有效组织密度与最近邻距离，点击指标或距离柱形回到对应对象及配对连线。单区域结果也支持相同的筛选与连线。
+
+比较载入后固定两侧版本，导出使用该快照的版本；后续复核后重新载入才能看到变化。阈值或算法版本不同、区域重叠时会提示解释限制。导出 ZIP 包含两侧对象表、比较汇总、逐起点最近邻表及方法记录。详细操作与读图案例见 [第 03 章](docs/guide/03-核心功能与截图演示.md#7-多区域比较与对象联动探索)。
+
+当前每次比较同一图像的两个 ROI；尚未实现跨病例汇总、组间检验或批量任务。Python 保持确定性模拟分析，面板仍为 DAPI、panCK、CD3、CD8。
+
 ## 工程结构
 
-- `frontend/`：React 查看器、导入、阈值、复核和导出。
+- `frontend/`：React 查看器、导入、阈值、对象探索、双 ROI 对比、复核和导出。
 - `backend/OncoMosaic.Api/`：ASP.NET Core API、MySQL、持久任务、结果校验与统计。
 - `inference/`：FastAPI 的 OME-TIFF 输入校验和确定性光谱 mIF 模拟分析。
 - `scripts/generate_demo_hsi.py`：图像、伴随文件、对照和独立真值生成器。
@@ -71,6 +79,7 @@ dotnet test backend/OncoMosaic.Tests
 cd frontend && npm test && npm run build && npm run test:e2e
 cd ..
 python3 scripts/verify_e2e.py
+python3 scripts/verify_comparison.py
 ```
 
-浏览器测试会更新 `docs/browser-workflow.png`；API 集成脚本会更新 `docs/api-verification.json`。这些是工程行为证据，**不是医学准确率证据**。完整输入、输出、限制见 [SPEC.md](SPEC.md)，学习材料见 [项目手册](docs/PROJECT_GUIDE.md)。
+浏览器测试会更新 `docs/browser-workflow.png`；API 集成脚本会更新 `docs/api-verification.json`；区域比较脚本会更新 `docs/comparison-verification.json`，浏览器比较测试生成 `docs/roi-comparison.png` 与 `docs/result-exploration.png`。这些是工程行为证据，**不是医学准确率证据**。完整输入、输出、限制见 [SPEC.md](SPEC.md)，学习材料见 [项目手册](docs/PROJECT_GUIDE.md)。

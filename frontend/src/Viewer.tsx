@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { Minus, Plus, Maximize } from 'lucide-react';
 import { imagePoint, rectangle } from './geometry';
-import { colors, type TissueImage, type Rect, type Roi, type Cell } from './types';
+import { colors, type TissueImage, type Rect, type Roi, type Cell, type NearestNeighbor } from './types';
 
-type Props = { image: TissueImage; rois: Roi[]; selectedRoi?: Roi; runId?: string; cells: Cell[]; selectedCell?: string; mode: 'pan'|'roi'; display: 'contour'|'points'|'off'; channels: Record<string, boolean>; opacity: number; draft?: Rect; onDraft: (r: Rect) => void; onCell: (c: Cell) => void; onRoi: (r: Roi) => void };
+type Props = { image: TissueImage; rois: Roi[]; selectedRoi?: Roi; runId?: string; cells: Cell[]; selectedCell?: string; mode: 'pan'|'roi'; display: 'contour'|'points'|'off'; channels: Record<string, boolean>; opacity: number; draft?: Rect; onDraft: (r: Rect) => void; onCell: (c: Cell) => void; onRoi: (r: Roi) => void; highlightedCellIds?: string[]; nearestNeighbors?: NearestNeighbor[]; showNeighbors?: boolean; focusRoi?: boolean; testId?: string };
 export function Viewer(p: Props) {
   const svg = useRef<SVGSVGElement>(null);
   const [view, setView] = useState({x: 70, y: 35, scale: 1.7});
@@ -12,11 +12,22 @@ export function Viewer(p: Props) {
   useEffect(() => { const observer = new ResizeObserver(([entry]) => setBounds({width: entry.contentRect.width, height: entry.contentRect.height})); if (svg.current) observer.observe(svg.current); return () => observer.disconnect(); }, []);
   const fit = () => { const scale = Math.min((bounds.width-110)/p.image.width, (bounds.height-85)/p.image.height); setView({scale, x: (bounds.width-p.image.width*scale)/2, y: (bounds.height-p.image.height*scale)/2}); };
   useEffect(fit, [p.image.id, bounds.width, bounds.height]);
+  useEffect(() => {
+    if (!p.focusRoi || !p.selectedRoi) return;
+    const r=p.selectedRoi, scale=Math.min((bounds.width-70)/r.width,(bounds.height-70)/r.height);
+    setView({scale,x:(bounds.width-r.width*scale)/2-r.x*scale,y:(bounds.height-r.height*scale)/2-r.y*scale});
+  },[p.focusRoi,p.selectedRoi?.id,bounds.width,bounds.height]);
+  const selected=p.cells.find(c=>c.cellId===p.selectedCell);
+  useEffect(() => {
+    if (selected) setView(v=>({...v,x:bounds.width/2-selected.x*v.scale,y:bounds.height/2-selected.y*v.scale}));
+  },[p.selectedCell,selected?.x,selected?.y,bounds.width,bounds.height]);
+  const highlighted=p.highlightedCellIds ? new Set(p.highlightedCellIds) : null;
+  const pairedTargets=new Set(p.showNeighbors ? p.nearestNeighbors?.map(n=>n.targetCellId) : []);
   const point = (e: {clientX: number; clientY: number}) => { const r = svg.current!.getBoundingClientRect(); return {x: e.clientX-r.left, y: e.clientY-r.top}; };
   const zoom = (factor: number, center = {x: bounds.width/2, y: bounds.height/2}) => setView(v => { const scale = Math.max(.15, Math.min(20, v.scale*factor)); const pt = imagePoint(center, v); return {scale, x: center.x-pt.x*scale, y: center.y-pt.y*scale}; });
   return <div className="viewer-wrap">
     <div className="viewer-label"><span className="live-dot"/> MULTIPLEX VIEWER <span>原图坐标 · px</span></div>
-    <svg ref={svg} data-testid="viewer" className={'viewer '+p.mode} onWheel={e => zoom(e.deltaY < 0 ? 1.1 : 1/1.1, point(e))}
+    <svg ref={svg} data-testid={p.testId || 'viewer'} className={'viewer '+p.mode} onWheel={e => zoom(e.deltaY < 0 ? 1.1 : 1/1.1, point(e))}
       onPointerDown={e => { if (e.button !== 0) return; const pos = point(e); const original = imagePoint(pos, view); setDrag({x: original.x, y: original.y, px: pos.x, py: pos.y}); e.currentTarget.setPointerCapture(e.pointerId); }}
       onPointerMove={e => { if (!drag) return; const pos = point(e); if (p.mode === 'pan') { setView(v => ({...v, x: v.x+pos.x-drag.px, y: v.y+pos.y-drag.py})); setDrag({...drag, px: pos.x, py: pos.y}); } else p.onDraft(rectangle(drag, imagePoint(pos, view), p.image.width, p.image.height)); }}
       onPointerUp={e => {setDrag(null); e.currentTarget.releasePointerCapture(e.pointerId);}} onPointerCancel={() => setDrag(null)}>
@@ -27,7 +38,12 @@ export function Viewer(p: Props) {
         {p.runId && p.selectedRoi && ['DAPI','panCK','CD3','CD8'].filter(c => p.channels[c]).map(c => <image key={c} filter={`url(#tint-${c})`} style={{mixBlendMode: 'screen'}} opacity={p.opacity} href={`/api/analysis-runs/${p.runId}/artifacts/${c}`} x={p.selectedRoi!.x} y={p.selectedRoi!.y} width={p.selectedRoi!.width} height={p.selectedRoi!.height}/>)}
         {p.rois.map(r => <g key={r.id} onPointerDown={e => { if(p.mode === 'pan') { e.stopPropagation(); p.onRoi(r); } }}><rect {...{x:r.x,y:r.y,width:r.width,height:r.height}} fill="none" stroke={r.id === p.selectedRoi?.id ? '#f0ddb0' : '#82999c'} strokeWidth={1/view.scale} strokeDasharray={r.id === p.selectedRoi?.id ? undefined : `${4/view.scale}`}/><text x={r.x+3/view.scale} y={r.y-6/view.scale} fill="#f0ddb0" fontSize={11/view.scale}>{r.name}</text></g>)}
         {p.draft && <rect {...p.draft} fill="#f0ddb011" stroke="#fff1bf" strokeWidth={1.5/view.scale} strokeDasharray={`${4/view.scale}`}/>}
-        {p.display !== 'off' && p.cells.map(c => <g key={c.cellId} data-testid={`cell-${c.localIndex}`} role="button" aria-label={`细胞 ${c.localIndex}`} tabIndex={0} onKeyDown={e => {if (e.key === 'Enter') p.onCell(c);}} onPointerDown={e => e.stopPropagation()} onClick={() => p.onCell(c)} style={{cursor:'pointer'}}>
+        {p.showNeighbors && p.nearestNeighbors?.map(n=><g key={n.sourceCellId} className="neighbor-link" data-testid={`neighbor-${n.sourceIndex}`} style={{pointerEvents:'none'}}>
+          <line x1={n.sourceX} y1={n.sourceY} x2={n.targetX} y2={n.targetY} stroke={p.selectedCell===n.sourceCellId||p.selectedCell===n.targetCellId?'#fff1a6':'#67e1cb'} strokeWidth={(p.selectedCell===n.sourceCellId?2:1)/view.scale} opacity=".85"/>
+          <circle cx={n.targetX} cy={n.targetY} r={3/view.scale} fill="none" stroke="#ffb74d" strokeWidth={1/view.scale}/>
+          <title>{`#${n.sourceIndex} → #${n.targetIndex} · ${n.distanceUm.toFixed(2)} µm`}</title>
+        </g>)}
+        {p.display !== 'off' && p.cells.map(c => <g key={c.cellId} data-testid={`cell-${c.localIndex}`} data-highlighted={!highlighted||highlighted.has(c.cellId)?'true':'false'} opacity={!highlighted||highlighted.has(c.cellId)||pairedTargets.has(c.cellId)||c.cellId===p.selectedCell?1:.16} role="button" aria-label={`细胞 ${c.localIndex}`} tabIndex={0} onKeyDown={e => {if (e.key === 'Enter') p.onCell(c);}} onPointerDown={e => e.stopPropagation()} onClick={() => p.onCell(c)} style={{cursor:'pointer'}}>
           {p.display === 'contour' && <polygon points={c.contour.map(v => v.join(',')).join(' ')} fill={c.cellId === p.selectedCell ? '#ffffff44' : 'transparent'} stroke={c.cellId === p.selectedCell ? '#fff' : colors[c.effectiveLabels]} strokeWidth={c.cellId === p.selectedCell ? 2/view.scale : .8/view.scale}/>}
           <circle cx={c.x} cy={c.y} r={p.display === 'points' ? 2.5/view.scale : 3/view.scale} fill={p.display === 'points' ? colors[c.effectiveLabels] : 'transparent'} stroke={c.cellId === p.selectedCell ? '#fff' : 'none'} strokeWidth={1.5/view.scale}/>
         </g>)}

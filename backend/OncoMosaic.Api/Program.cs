@@ -16,6 +16,7 @@ builder.Services.AddSingleton<FileStore>();
 builder.Services.AddHttpClient<InferenceClient>(c => { c.BaseAddress = new Uri(builder.Configuration["PYTHON_URL"] ?? "http://localhost:8000/"); c.Timeout = TimeSpan.FromSeconds(90); });
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<ResultService>();
+builder.Services.AddScoped<ComparisonService>();
 builder.Services.AddHostedService<AnalysisWorker>();
 var app = builder.Build();
 app.Use(async (context, next) =>
@@ -98,6 +99,9 @@ app.MapGet("/api/analysis-runs/{id:guid}/cells", async (Guid id, int? reviewVers
     return x == null ? s.Cells : s.Cells.Where(c => c.X >= x && c.Y >= y && c.X < x+width && c.Y < y+height).ToList();
 });
 app.MapGet("/api/analysis-runs/{id:guid}/summary", async (Guid id, int? reviewVersion, ResultService results, CancellationToken ct) => (await results.Snapshot(id, reviewVersion, ct)).Summary);
+app.MapGet("/api/analysis-runs/{id:guid}/exploration", async (Guid id, int? reviewVersion, ResultService results, CancellationToken ct) => Comparison.Explore(await results.Snapshot(id, reviewVersion, ct)));
+app.MapPost("/api/images/{id:guid}/comparisons", async (Guid id, ComparisonInput input, ComparisonService comparisons, CancellationToken ct) => await comparisons.Create(id, input, ct));
+app.MapPost("/api/images/{id:guid}/comparisons/export", async (Guid id, ComparisonInput input, ComparisonService comparisons, CancellationToken ct) => Results.File(Comparison.Export(await comparisons.Create(id, input, ct)), "application/zip", "oncomosaic-comparison.zip"));
 app.MapGet("/api/analysis-runs/{id:guid}/reviews", async (Guid id, AppDb db) => await (from change in db.ReviewChanges join rev in db.ReviewRevisions on change.RevisionId equals rev.Id where rev.RunId == id orderby rev.Version select new { rev.Version, rev.CreatedAt, change.CellId, change.NewLabel, change.Reason }).ToListAsync());
 app.MapPost("/api/analysis-runs/{id:guid}/reviews", async (Guid id, ReviewInput input, AppDb db, CancellationToken ct) =>
 {

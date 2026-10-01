@@ -1,0 +1,27 @@
+{
+  "passed": true,
+  "runIds": [
+    "6f9974f9-66d5-4928-a68e-f0cc9cf52148",
+    "713a0989-787b-43ca-a62b-84e294bbe6b4"
+  ],
+  "reviewVersions": [
+    0,
+    0
+  ],
+  "pairCounts": [
+    15,
+    13
+  ],
+  "checks": [
+    "nearest pair identities and physical coordinates",
+    "per-ROI summary means",
+    "review exclusion recomputes targets",
+    "historical snapshots unchanged",
+    "latest resolved to explicit versions",
+    "pinned CSV and JSON comparison export",
+    "quoted ROI names",
+    "scheme mismatch warning",
+    "missing pair null",
+    "same ROI / wrong image / nonexistent version / missing selection rejected"
+  ]
+}
