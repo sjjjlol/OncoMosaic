@@ -27,7 +27,11 @@ def call(path,body=None,expected=200,raw=False):
         return details
 
 def run(image,roi,threshold=.35):
-    result=call('/analysis-runs',dict(imageId=image['id'],roiId=roi['id'],modelVersion='spectral-mif-sim-v1',thresholds=dict(panck=threshold,cd3=threshold,cd8=threshold)),202)
+    thresholds=dict(panck=threshold,cd3=threshold,cd8=threshold)
+    has_ki67=image.get('capabilities',{}).get('ki67',False)
+    if has_ki67: thresholds['ki67']=threshold
+    model='spectral-mif-sim-v2' if has_ki67 else 'spectral-mif-sim-v1'
+    result=call('/analysis-runs',dict(imageId=image['id'],roiId=roi['id'],modelVersion=model,thresholds=thresholds),202)
     for _ in range(60):
         state=call('/analysis-runs/'+result['runId'])
         if state['status']=='Succeeded':return result['runId']
@@ -61,11 +65,12 @@ path=f"/images/{image['id']}/comparisons"
 input=dict(a=dict(runId=a,reviewVersion=0),b=dict(runId=b,reviewVersion=0))
 original=call(path,input)
 assert original['sameScheme']
+assert original['ki67']['comparable']==image.get('capabilities',{}).get('ki67',False)
 for side in (original['a'],original['b']):verify_pairs(side,image['pixelSizeUm'])
 assert call(f'/analysis-runs/{a}/exploration?reviewVersion=0')==original['a']
 assert original['a']['nearestNeighbors']
 target=original['a']['nearestNeighbors'][0]['targetCellId']
-call(f'/analysis-runs/{a}/reviews',dict(cellId=target,newLabel='excluded',reason='最近邻版本一致性验收'),201)
+call(f'/analysis-runs/{a}/reviews',dict(cellId=target,newLabel='excluded',reason='最近邻版本一致性验收',baseReviewVersion=original['a']['summary']['reviewVersion']),201)
 latest=call(path,dict(a=dict(runId=a),b=dict(runId=b)))
 assert latest['a']['summary']['reviewVersion']==1
 assert all(p['targetCellId']!=target for p in latest['a']['nearestNeighbors'])
@@ -92,6 +97,6 @@ call(path,dict(a=dict(runId=a),b=dict(runId=a)),400)
 call(f'/images/{uuid.uuid4()}/comparisons',input,400)
 call(path,dict(a=dict(runId=a,reviewVersion=99),b=dict(runId=b)),404)
 call(path,dict(a=None,b=dict(runId=b)),400)
-report=dict(passed=True,runIds=[a,b],reviewVersions=[0,0],pairCounts=[len(original['a']['nearestNeighbors']),len(original['b']['nearestNeighbors'])],checks=['nearest pair identities and physical coordinates','per-ROI summary means','review exclusion recomputes targets','historical snapshots unchanged','latest resolved to explicit versions','pinned CSV and JSON comparison export','quoted ROI names','scheme mismatch warning','missing pair null','same ROI / wrong image / nonexistent version / missing selection rejected'])
+report=dict(passed=True,modelVersion=original['a']['modelVersion'],ki67Capable=image.get('capabilities',{}).get('ki67',False),runIds=[a,b],reviewVersions=[0,0],pairCounts=[len(original['a']['nearestNeighbors']),len(original['b']['nearestNeighbors'])],checks=['nearest pair identities and physical coordinates','per-ROI summary means','review exclusion recomputes targets','historical snapshots unchanged','latest resolved to explicit versions','pinned CSV and JSON comparison export','quoted ROI names','scheme mismatch warning','missing pair null','same ROI / wrong image / nonexistent version / missing selection rejected'])
 Path('docs/comparison-verification.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps(report,ensure_ascii=False,indent=2))

@@ -1,8 +1,10 @@
 {
   "passed": true,
+  "modelVersion": "spectral-mif-sim-v2",
+  "ki67Capable": true,
   "runIds": [
-    "0c85722e-cd77-4965-b3a4-054e6f4973ba",
-    "da57aba1-18f7-4f1c-95a6-7c6d62e7df42"
+    "71cb768f-18de-4c2d-9a0f-b150ea52d54b",
+    "d54a7059-dcbd-430b-ae3d-19088970a375"
   ],
   "reviewVersions": [
     0,
