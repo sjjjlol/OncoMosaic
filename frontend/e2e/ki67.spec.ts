@@ -1,0 +1,84 @@
+import {test,expect} from '@playwright/test';
+import fs from 'node:fs';
+import path from 'node:path';
+
+test('Ki-67: one analysis, independent review, denominator exploration, legacy and v2 exports',async({page,request})=>{
+  test.setTimeout(120000);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  const project=(await (await request.get('/api/projects')).json())[0];
+  const response=await request.post(`/api/projects/${project.id}/images`,{multipart:{
+    file:{name:'ki67.ome.tiff',mimeType:'application/octet-stream',buffer:fs.readFileSync(path.resolve('../data/sample-ki67.ome.tiff'))},
+    assay:{name:'ki67.assay.json',mimeType:'application/json',buffer:fs.readFileSync(path.resolve('../data/sample-ki67.assay.json'))},name:`Ki-67 验收 ${Date.now()}`,
+  }});
+  expect(response.status()).toBe(201);const image=await response.json();expect(image.capabilities.ki67).toBe(true);
+  const roi=await (await request.post(`/api/images/${image.id}/rois`,{data:{name:'Ki-67 总体区域',x:0,y:0,width:256,height:256,regionTag:'other'}})).json();
+  const input={imageId:image.id,roiId:roi.id,modelVersion:'spectral-mif-sim-v2',thresholds:{panck:.35,cd3:.35,cd8:.35,ki67:.35}};
+  expect((await request.post('/api/analysis-runs',{data:{...input,modelVersion:'spectral-mif-sim-v1'}})).status()).toBe(400);
+  expect((await request.post('/api/analysis-runs',{data:{...input,thresholds:{panck:.35,cd3:.35,cd8:.35}}})).status()).toBe(400);
+  // Start via UI, including the new threshold and channel controls.
+  await page.addInitScript(id=>localStorage.setItem('imageId',id),image.id);
+  await page.goto('/');await expect(page.getByLabel('Ki-67 阈值')).toBeVisible();
+  await page.getByLabel('Ki-67 阈值').fill('.35');
+  await page.getByRole('button',{name:'开始分析',exact:true}).click();
+  await expect(page.getByTestId('total-count')).not.toContainText('—',{timeout:45000});
+  const run=(await (await request.get(`/api/images/${image.id}/analysis-runs`)).json())[0];
+  expect(run.modelVersion).toBe('spectral-mif-sim-v2');
+  const original=await (await request.get(`/api/analysis-runs/${run.runId}/exploration?reviewVersion=0`)).json();
+  const q=original.summary.ki67.panck;
+  expect(q.positiveCount).toBeGreaterThan(0);expect(q.negativeCount).toBeGreaterThan(0);
+  expect(q.fraction).toBeCloseTo(q.positiveCount/q.evaluableCount,10);
+  const panel=page.getByRole('region',{name:'当前区域 Ki-67 统计'});
+  await expect(panel.getByTestId('当前区域-ki67-fraction')).toHaveText(`${(q.fraction*100).toFixed(2)}%`);
+  await panel.getByRole('button',{name:`阳性 ${q.positiveCount}`,exact:true}).click();
+  await expect(page.getByTestId('viewer').locator('[data-highlighted="true"]')).toHaveCount(q.positiveCount);
+  await panel.getByRole('button',{name:`可评价 ${q.evaluableCount}`,exact:true}).click();
+  await expect(page.getByTestId('viewer').locator('[data-highlighted="true"]')).toHaveCount(q.evaluableCount);
+  const target=original.cells.find((c:any)=>c.effectiveLabels==='panck'&&c.ki67.effectiveState==='positive'&&c.ki67.quality==='ok');
+  await page.getByTestId(`cell-${target.localIndex}`).click();
+  await page.getByLabel('修正 Ki-67 状态').selectOption('negative');
+  await page.getByLabel('复核原因').fill('模拟验收：独立核内状态复核');
+  await page.getByRole('button',{name:'提交 Ki-67 复核',exact:true}).click();
+  await expect(panel.getByRole('button',{name:`阳性 ${q.positiveCount-1}`,exact:true})).toBeVisible();
+  const reviewed=await (await request.get(`/api/analysis-runs/${run.runId}/exploration`)).json();
+  const changed=reviewed.cells.find((c:any)=>c.cellId===target.cellId);
+  expect(changed.effectiveLabels).toBe('panck');expect(changed.ki67.autoState).toBe('positive');expect(changed.ki67.effectiveState).toBe('negative');
+  expect(reviewed.summary.ki67.panck.evaluableCount).toBe(q.evaluableCount);
+  expect(reviewed.nearestNeighbors).toEqual(original.nearestNeighbors);
+  expect((await request.post(`/api/analysis-runs/${run.runId}/reviews`,{data:{cellId:target.cellId,newLabel:'positive',dimension:'ki67',reason:'stale',baseReviewVersion:0}})).status()).toBe(409);
+  expect((await request.post(`/api/analysis-runs/${run.runId}/reviews`,{data:{cellId:target.cellId,newLabel:'positive',dimension:'ki67',reason:'missing version'}})).status()).toBe(400);
+  await page.getByLabel('复核版本',{exact:true}).selectOption('0');
+  await expect(panel.getByRole('button',{name:`阳性 ${q.positiveCount}`,exact:true})).toBeVisible();
+  await page.getByLabel('复核版本',{exact:true}).selectOption('1');
+  await expect(panel.getByRole('button',{name:`阳性 ${q.positiveCount-1}`,exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'图层与分析',exact:true}).click();
+  await page.getByLabel('Ki-67 · 核内标记').check();
+  await page.getByLabel('DAPI · 细胞核').check();
+  await expect(page.locator('image[href$="/artifacts/Ki67"]')).toHaveCount(1);
+  const downloadPromise=page.waitForEvent('download');
+  await page.getByRole('button',{name:'导出当前版本'}).click();
+  await (await downloadPromise).saveAs(path.resolve('../.local/ki67-export.zip'));
+  await page.screenshot({path:path.resolve('../docs/ki67-workflow.png'),fullPage:true});
+  const quantitative=await request.get(`/api/analysis-runs/${run.runId}/artifacts/Ki67-quantitative`);
+  expect(quantitative.status()).toBe(200);expect(quantitative.headers()['content-type']).toContain('application/octet-stream');
+  // Old exports remain opt-in-compatible; v2 is selected explicitly by the UI.
+  const legacy=await request.get(`/api/analysis-runs/${run.runId}/export?reviewVersion=0`);expect(legacy.status()).toBe(200);
+  fs.writeFileSync(path.resolve('../.local/ki67-legacy-export.zip'),await legacy.body());
+  expect((await request.get(`/api/analysis-runs/${run.runId}/export?exportSchemaVersion=3`)).status()).toBe(400);
+  const secondRoi=await (await request.post(`/api/images/${image.id}/rois`,{data:{name:'Ki-67 对比区域',x:0,y:0,width:256,height:128,regionTag:'other'}})).json();
+  const second=await (await request.post('/api/analysis-runs',{data:{...input,roiId:secondRoi.id}})).json();
+  await expect.poll(async()=> (await (await request.get(`/api/analysis-runs/${second.runId}`)).json()).status,{timeout:45000}).toBe('Succeeded');
+  const comparisonInput={a:{runId:run.runId,reviewVersion:1},b:{runId:second.runId,reviewVersion:0}};
+  const comparison=await (await request.post(`/api/images/${image.id}/comparisons`,{data:comparisonInput})).json();
+  expect(comparison.ki67.comparable).toBe(true);
+  expect(comparison.ki67.differencePercentagePoints.panck).toBeCloseTo((reviewed.summary.ki67.panck.fraction-comparison.b.summary.ki67.panck.fraction)*100,8);
+  const exportResponse=await request.post(`/api/images/${image.id}/comparisons/export?exportSchemaVersion=2`,{data:comparisonInput});
+  expect(exportResponse.status()).toBe(200);fs.writeFileSync(path.resolve('../.local/ki67-comparison-export.zip'),await exportResponse.body());
+  await page.reload();await page.getByRole('button',{name:'比较区域',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'多区域比较'});
+  await dialog.getByRole('button',{name:'比较所选区域'}).click();
+  await expect(dialog.getByTestId('comparison-scheme')).toContainText('分析方案一致');
+  await expect(dialog.getByText(/上皮候选比例 A−B/)).toBeVisible();
+  await expect(dialog.getByRole('region',{name:'区域 A Ki-67 统计'})).toBeVisible();
+  fs.writeFileSync(path.resolve('../docs/ki67-verification.json'),JSON.stringify({notice:'Synthetic engineering validation, not medical accuracy',runId:run.runId,imageId:image.id,original:original.summary,reviewed:reviewed.summary,comparison:comparison.ki67},null,2));
+  expect(errors).toEqual([]);
+});

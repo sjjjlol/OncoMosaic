@@ -1,7 +1,7 @@
 import type { Cell, NearestNeighbor } from './types';
 
 export type DistanceBin = {min: number; max: number; includeMax: boolean; count: number};
-export type ObjectSelection = {label: string; bin: DistanceBin|null};
+export type ObjectSelection = {label: string; bin: DistanceBin|null; ki67Population?: string; ki67State?: string};
 export const allObjects: ObjectSelection = {label: 'all', bin: null};
 
 export function inBin(distance: number, bin: DistanceBin) {
@@ -21,7 +21,12 @@ export function selectedObjects(cells: Cell[], pairs: NearestNeighbor[], selecti
   const sources = selection.bin ? new Set(pairs.filter(p => inBin(p.distanceUm, selection.bin!)).map(p => p.sourceCellId)) : null;
   return cells.filter(c => {
     const matches = selection.label === 'all' || (selection.label === 'valid' ? !['excluded', 'unclassified'].includes(c.effectiveLabels) : selection.label === 'changed' ? c.autoLabels !== c.effectiveLabels : selection.label === 'quality' ? c.qualityFlag !== 'ok' : c.effectiveLabels === selection.label);
-    return matches && (!sources || sources.has(c.cellId));
+    const population = selection.ki67Population;
+    const k = c.ki67?.effectiveState ?? 'not-measured';
+    const eligible = c.qualityFlag === 'ok' && c.effectiveLabels !== 'excluded';
+    const populationMatches = !population || (eligible && (population === 'all' || (population === 'cd3' ? ['cd3','cd3-cd8'].includes(c.effectiveLabels) : c.effectiveLabels === population)));
+    const stateMatches = !selection.ki67State || (selection.ki67State === 'evaluable' ? ['positive','negative'].includes(k) : k === selection.ki67State);
+    return matches && populationMatches && stateMatches && (!sources || sources.has(c.cellId));
   });
 }
 

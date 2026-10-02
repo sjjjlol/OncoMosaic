@@ -1,8 +1,8 @@
 namespace OncoMosaic;
 
-public record CellView(Guid CellId, int LocalIndex, double X, double Y, int AreaPx, object Intensities, string AutoLabels, string EffectiveLabels, string QualityFlag, double[][] Contour);
+public record CellView(Guid CellId, int LocalIndex, double X, double Y, int AreaPx, object Intensities, string AutoLabels, string EffectiveLabels, string QualityFlag, double[][] Contour, Ki67View? Ki67 = null);
 public record Counts(int Total, int Valid, int Excluded, int Unclassified, int Panck, int Cd3Cd8, int Cd3Only, int Negative);
-public record Summary(Counts Counts, object Denominators, double AreaMm2, object Units, Thresholds Thresholds, int ReviewVersion, double? PanckFraction, double? Cd3Cd8Fraction, double PanckDensity, double Cd3Cd8Density, double? MeanNearestDistanceUm, double[] NearestDistancesUm, string RegionTag, string Notice);
+public record Summary(Counts Counts, object Denominators, double AreaMm2, object Units, Thresholds Thresholds, int ReviewVersion, double? PanckFraction, double? Cd3Cd8Fraction, double PanckDensity, double Cd3Cd8Density, double? MeanNearestDistanceUm, double[] NearestDistancesUm, string RegionTag, string Notice, Dictionary<string, Ki67Summary>? Ki67 = null);
 public record NearestNeighbor(Guid SourceCellId, int SourceIndex, double SourceX, double SourceY, Guid TargetCellId, int TargetIndex, double TargetX, double TargetY, double DistanceUm);
 public static class Quantification
 {
@@ -20,8 +20,8 @@ public static class Quantification
         if (cd3) return "cd3";
         return "negative";
     }
-    public static List<CellView> Views(IEnumerable<Cell> cells, Thresholds thresholds, IReadOnlyDictionary<Guid, string> changes) => cells.Select(c =>
-        new CellView(c.Id, c.LocalIndex, c.X, c.Y, c.AreaPx, new { dapi = c.DapiValue, panck = c.PanckValue, cd3 = c.Cd3Value, cd8 = c.Cd8Value }, Auto(c, thresholds), changes.GetValueOrDefault(c.Id, Auto(c, thresholds)), c.QualityFlag, Json.Read<double[][]>(c.ContourJson))).ToList();
+    public static List<CellView> Views(IEnumerable<Cell> cells, Thresholds thresholds, IReadOnlyDictionary<Guid, string> changes, IReadOnlyDictionary<Guid, string>? ki67Changes = null) => cells.Select(c =>
+        new CellView(c.Id, c.LocalIndex, c.X, c.Y, c.AreaPx, new { dapi = c.DapiValue, panck = c.PanckValue, cd3 = c.Cd3Value, cd8 = c.Cd8Value }, Auto(c, thresholds), changes.GetValueOrDefault(c.Id, Auto(c, thresholds)), c.QualityFlag, Json.Read<double[][]>(c.ContourJson), Ki67Quantification.View(c, thresholds, ki67Changes?.GetValueOrDefault(c.Id)))).ToList();
     public static List<NearestNeighbor> Neighbors(List<CellView> cells, Roi roi, double pixelSize)
     {
         var inside = cells.Where(c => roi.Rect().Contains(c.X, c.Y)).ToList();
@@ -47,6 +47,6 @@ public static class Quantification
         var area = validTissuePx * Math.Pow(pixelSize / 1000, 2);
         if (area <= 0) throw new InvalidOperationException("有效组织面积必须大于零");
         var counts = new Counts(inside.Count, valid.Count, inside.Count(c => c.EffectiveLabels == "excluded"), inside.Count(c => c.EffectiveLabels == "unclassified"), panck.Count, cd3cd8.Count, valid.Count(c => c.EffectiveLabels == "cd3"), valid.Count(c => c.EffectiveLabels == "negative"));
-        return new(counts, new { positiveFraction = valid.Count, densityAreaMm2 = area, distanceSource = cd3cd8.Count, distanceTarget = panck.Count, excludedAreaPx = roi.Width * roi.Height - validTissuePx }, area, new { area = "mm²", density = "objects/mm²", distance = "µm" }, thresholds, version, valid.Count == 0 ? null : (double)panck.Count / valid.Count, valid.Count == 0 ? null : (double)cd3cd8.Count / valid.Count, panck.Count / area, cd3cd8.Count / area, distances.Length == 0 ? null : distances.Average(), distances, roi.RegionTag, Notice);
+        return new(counts, new { positiveFraction = valid.Count, densityAreaMm2 = area, distanceSource = cd3cd8.Count, distanceTarget = panck.Count, excludedAreaPx = roi.Width * roi.Height - validTissuePx }, area, new { area = "mm²", density = "objects/mm²", distance = "µm" }, thresholds, version, valid.Count == 0 ? null : (double)panck.Count / valid.Count, valid.Count == 0 ? null : (double)cd3cd8.Count / valid.Count, panck.Count / area, cd3cd8.Count / area, distances.Length == 0 ? null : distances.Average(), distances, roi.RegionTag, Notice, Ki67Quantification.Summarize(inside, area));
     }
 }

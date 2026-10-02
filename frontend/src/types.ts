@@ -1,15 +1,20 @@
 export type Project = { id: string; name: string };
-export type TissueImage = { id: string; name: string; description: string; width: number; height: number; bandCount: number; pixelSizeUm: number; wavelengths: number[]; previewUrl: string; acquisition: {assayId: string; scannerId: string; stainBatchId: string; calibrationId: string; source: string} };
+export type TissueImage = { id: string; name: string; description: string; width: number; height: number; bandCount: number; pixelSizeUm: number; wavelengths: number[]; previewUrl: string; capabilities?: {ki67: boolean}; acquisition: {assayId: string; scannerId: string; stainBatchId: string; calibrationId: string; source: string} };
 export type Rect = { x: number; y: number; width: number; height: number };
 export type Roi = Rect & { id: string; imageId: string; name: string; regionTag: string };
-export type Thresholds = { panck: number; cd3: number; cd8: number };
+export type Thresholds = { panck: number; cd3: number; cd8: number; ki67?: number|null };
 export type Run = { runId: string; roiId: string; status: 'Queued'|'Running'|'Succeeded'|'Failed'; attempt: number; modelVersion: string; algorithmVersion: string; thresholds: Thresholds; createdAt: string; error: {message: string}|null };
-export type Cell = { cellId: string; localIndex: number; x: number; y: number; areaPx: number; intensities: {dapi: number; panck: number; cd3: number; cd8: number}; autoLabels: string; effectiveLabels: string; qualityFlag: string; contour: number[][] };
-export type Summary = { counts: {total: number; valid: number; excluded: number; unclassified: number; panck: number; cd3Cd8: number; cd3Only: number; negative: number}; areaMm2: number; reviewVersion: number; panckFraction: number|null; cd3Cd8Fraction: number|null; panckDensity: number; cd3Cd8Density: number; meanNearestDistanceUm: number|null; nearestDistancesUm: number[]; regionTag: string; thresholds: Thresholds };
-export type Review = {version: number; cellId: string; newLabel: string; reason: string};
+export type Cell = { cellId: string; localIndex: number; x: number; y: number; areaPx: number; intensities: {dapi: number; panck: number; cd3: number; cd8: number}; autoLabels: string; effectiveLabels: string; qualityFlag: string; contour: number[][]; ki67?: Ki67View };
+export type Summary = { counts: {total: number; valid: number; excluded: number; unclassified: number; panck: number; cd3Cd8: number; cd3Only: number; negative: number}; areaMm2: number; reviewVersion: number; panckFraction: number|null; cd3Cd8Fraction: number|null; panckDensity: number; cd3Cd8Density: number; meanNearestDistanceUm: number|null; nearestDistancesUm: number[]; regionTag: string; thresholds: Thresholds; ki67?: Record<string, Ki67Summary> };
+export type Review = {version: number; cellId: string; newLabel: string; reason: string; dimension?: string};
 export type NearestNeighbor = { sourceCellId: string; sourceIndex: number; sourceX: number; sourceY: number; targetCellId: string; targetIndex: number; targetX: number; targetY: number; distanceUm: number };
 export type Exploration = { runId: string; modelVersion: string; algorithmVersion: string; roi: Roi; summary: Summary; cells: Cell[]; nearestNeighbors: NearestNeighbor[]; reviews: Review[] };
 export type ResultSelection = {runId: string; reviewVersion: number|null};
-export type ComparisonResult = {imageId: string; imageSha256: string; assaySha256: string; pixelSizeUm: number; a: Exploration; b: Exploration; sameScheme: boolean; warnings: string[]};
+export type ComparisonResult = {imageId: string; imageSha256: string; assaySha256: string; pixelSizeUm: number; a: Exploration; b: Exploration; sameScheme: boolean; warnings: string[]; ki67?: {comparable: boolean; reasons: string[]; differencePercentagePoints: Record<string,number|null>}};
 export const labels: Record<string, string> = {negative: '未达面板阳性阈值', panck: 'panCK⁺ 上皮候选', 'cd3-cd8': 'CD3⁺CD8⁺ T 细胞候选', cd3: 'CD3⁺ 其他候选', unclassified: '无法判定', excluded: '人工排除'};
 export const colors: Record<string, string> = {negative: '#74acff', panck: '#ffb74d', 'cd3-cd8': '#42e1a7', cd3: '#f284e4', unclassified: '#c8a064', excluded: '#969696'};
+
+export type Ki67View = {value: number|null; unit: string; compartment: string; validPixelCount: number; quality: string; autoState: string; effectiveState: string};
+export type Ki67Summary = {positiveCount: number; negativeCount: number; indeterminateCount: number; notMeasuredCount: number; evaluableCount: number; targetCount: number; excludedCount: number; identityUnclassifiedCount: number; fraction: number|null; coverage: number|null; positiveDensity: number|null; status: string; reason: string|null};
+export const ki67States: Record<string,string> = {positive:'阳性',negative:'阴性',indeterminate:'无法判定','not-measured':'未检测'};
+export const populations: Record<string,string> = {panck:'上皮候选对象',cd3:'全部 CD3⁺ 候选', 'cd3-cd8':'CD3⁺CD8⁺ 候选',all:'全部有效核'};

@@ -53,7 +53,7 @@ test('two ROI snapshots → linked distances → review versions → pinned comp
   const target=result.a.nearestNeighbors[0].targetCellId;
   expect((await request.post(`/api/analysis-runs/${runs[0].runId}/reviews`,{data:{cellId:target,newLabel:'excluded',reason:'比较快照验收'}})).status()).toBe(201);
   await expect(dialog.getByTestId('comparison-scheme')).toContainText('A 复核 v0 / B 复核 v0');
-  const exportRequest=page.waitForRequest(r=>r.url().endsWith('/comparisons/export'));
+  const exportRequest=page.waitForRequest(r=>new URL(r.url()).pathname.endsWith('/comparisons/export'));
   const downloaded=page.waitForEvent('download');
   await dialog.getByRole('button',{name:'导出比较快照'}).click();
   expect((await exportRequest).postDataJSON()).toEqual(input);

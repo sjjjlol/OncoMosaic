@@ -44,7 +44,8 @@ app.MapPost("/api/projects", async (ProjectInput input, AppDb db) =>
     if (string.IsNullOrWhiteSpace(input.Name) || input.Name.Length > 120) throw new ApiError(400, "INVALID_NAME", "项目名称必填且最多 120 字");
     var p = new Project { Name = input.Name.Trim() }; db.Projects.Add(p); await db.SaveChangesAsync(); return Results.Created($"/api/projects/{p.Id}", p);
 });
-static object ImageDto(TissueImage i) => new { i.Id, i.ProjectId, i.Name, i.Description, i.Width, i.Height, i.BandCount, i.PixelSizeUm, wavelengths = Json.Read<double[]>(i.WavelengthsJson), acquisition = Json.Read<object>(i.AcquisitionJson), i.Sha256, i.AssaySha256, i.CreatedAt, previewUrl = $"/api/images/{i.Id}/preview", notice = Quantification.Notice };
+static bool HasKi67(TissueImage i) => Json.Read<System.Text.Json.JsonElement>(i.AcquisitionJson).TryGetProperty("markers", out var markers) && markers.EnumerateArray().Any(m => m.GetString() == "Ki67");
+static object ImageDto(TissueImage i) => new { i.Id, i.ProjectId, capabilities = new { ki67 = HasKi67(i) }, i.Name, i.Description, i.Width, i.Height, i.BandCount, i.PixelSizeUm, wavelengths = Json.Read<double[]>(i.WavelengthsJson), acquisition = Json.Read<object>(i.AcquisitionJson), i.Sha256, i.AssaySha256, i.CreatedAt, previewUrl = $"/api/images/{i.Id}/preview", notice = Quantification.Notice };
 app.MapGet("/api/projects/{id:guid}/images", async (Guid id, AppDb db) => (await db.Images.Where(i => i.ProjectId == id && i.AssayKey != "").OrderBy(i => i.CreatedAt).ToListAsync()).Select(ImageDto));
 app.MapPost("/api/projects/{id:guid}/images", async (Guid id, HttpRequest request, ImportService imports, CancellationToken ct) =>
 {
@@ -74,8 +75,11 @@ app.MapGet("/api/images/{id:guid}/analysis-runs", async (Guid id, AppDb db) => (
 app.MapPost("/api/analysis-runs", async (RunInput input, AppDb db) =>
 {
     var roi = await db.Rois.FindAsync(input.RoiId) ?? throw new ApiError(404, "NOT_FOUND", "ROI 不存在");
-    if (roi.ImageId != input.ImageId || input.ModelVersion != "spectral-mif-sim-v1" || input.Thresholds == null || !input.Thresholds.Valid()) throw new ApiError(400, "INVALID_ANALYSIS", "图像、模型版本或阈值无效；阈值必须在 0–1 内");
-    var run = new AnalysisRun { RoiId = roi.Id, ThresholdsJson = Json.Write(input.Thresholds) };
+    if (roi.ImageId != input.ImageId || input.ModelVersion is not ("spectral-mif-sim-v1" or Ki67Quantification.Model) || input.Thresholds == null || !input.Thresholds.Valid()) throw new ApiError(400, "INVALID_ANALYSIS", "图像、模型版本或阈值无效；阈值必须在 0–1 内");
+    var image = await db.Images.SingleAsync(i => i.Id == roi.ImageId);
+    var ki67 = HasKi67(image);
+    if ((ki67 && input.ModelVersion != Ki67Quantification.Model) || ki67 != (input.Thresholds.Ki67 != null)) throw new ApiError(400, "INVALID_KI67_SCHEME", "Ki-67 面板须使用 v2 模拟模型并提供 Ki-67 阈值；未检测面板不可提交该阈值");
+    var run = new AnalysisRun { RoiId = roi.Id, ModelVersion = input.ModelVersion, AlgorithmVersion = input.ModelVersion == Ki67Quantification.Model ? Ki67Quantification.Algorithm : "quantification-v2", ThresholdsJson = Json.Write(input.Thresholds) };
     db.AnalysisRuns.Add(run); await db.SaveChangesAsync(); return Results.Accepted($"/api/analysis-runs/{run.Id}", RunDto(run));
 });
 app.MapGet("/api/analysis-runs/{id:guid}", async (Guid id, AppDb db) => RunDto(await db.AnalysisRuns.FindAsync(id) ?? throw new ApiError(404, "NOT_FOUND", "任务不存在")));
@@ -90,7 +94,7 @@ app.MapGet("/api/analysis-runs/{id:guid}/artifacts/{kind}", async (Guid id, stri
 {
     if (!await db.AnalysisRuns.AnyAsync(r => r.Id == id && r.Status == "Succeeded")) throw new ApiError(409, "NOT_READY", "任务尚未成功");
     var a = await db.Artifacts.SingleOrDefaultAsync(a => a.RunId == id && a.Kind == kind) ?? throw new ApiError(404, "NOT_FOUND", "结果文件不存在");
-    return Results.File(store.Existing(a.FileKey), kind == "mask" ? "application/octet-stream" : kind is "cells" or "qc" ? "application/json" : "image/png");
+    return Results.File(store.Existing(a.FileKey), kind is "mask" or "Ki67-quantitative" ? "application/octet-stream" : kind is "cells" or "qc" ? "application/json" : "image/png");
 });
 app.MapGet("/api/analysis-runs/{id:guid}/cells", async (Guid id, int? reviewVersion, double? x, double? y, double? width, double? height, ResultService results, CancellationToken ct) =>
 {
@@ -101,37 +105,46 @@ app.MapGet("/api/analysis-runs/{id:guid}/cells", async (Guid id, int? reviewVers
 app.MapGet("/api/analysis-runs/{id:guid}/summary", async (Guid id, int? reviewVersion, ResultService results, CancellationToken ct) => (await results.Snapshot(id, reviewVersion, ct)).Summary);
 app.MapGet("/api/analysis-runs/{id:guid}/exploration", async (Guid id, int? reviewVersion, ResultService results, CancellationToken ct) => Comparison.Explore(await results.Snapshot(id, reviewVersion, ct)));
 app.MapPost("/api/images/{id:guid}/comparisons", async (Guid id, ComparisonInput input, ComparisonService comparisons, CancellationToken ct) => await comparisons.Create(id, input, ct));
-app.MapPost("/api/images/{id:guid}/comparisons/export", async (Guid id, ComparisonInput input, ComparisonService comparisons, CancellationToken ct) => Results.File(Comparison.Export(await comparisons.Create(id, input, ct)), "application/zip", "oncomosaic-comparison.zip"));
-app.MapGet("/api/analysis-runs/{id:guid}/reviews", async (Guid id, AppDb db) => await (from change in db.ReviewChanges join rev in db.ReviewRevisions on change.RevisionId equals rev.Id where rev.RunId == id orderby rev.Version select new { rev.Version, rev.CreatedAt, change.CellId, change.NewLabel, change.Reason }).ToListAsync());
+app.MapPost("/api/images/{id:guid}/comparisons/export", async (Guid id, ComparisonInput input, int? exportSchemaVersion, ComparisonService comparisons, CancellationToken ct) => Results.File(Comparison.Export(await comparisons.Create(id, input, ct), exportSchemaVersion ?? 1), "application/zip", "oncomosaic-comparison.zip"));
+app.MapGet("/api/analysis-runs/{id:guid}/reviews", async (Guid id, AppDb db) => await (from change in db.ReviewChanges join rev in db.ReviewRevisions on change.RevisionId equals rev.Id where rev.RunId == id orderby rev.Version select new { rev.Version, rev.CreatedAt, change.CellId, change.Dimension, change.NewLabel, change.Reason }).ToListAsync());
 app.MapPost("/api/analysis-runs/{id:guid}/reviews", async (Guid id, ReviewInput input, AppDb db, CancellationToken ct) =>
 {
-    if (!Quantification.Labels.Contains(input.NewLabel) || (input.Reason?.Length ?? 0) > 2000) throw new ApiError(400, "INVALID_REVIEW", "复核类别或原因无效");
+    if (input.Dimension is not ("identity" or "ki67") || !(input.Dimension == "ki67" ? Ki67Quantification.States.Contains(input.NewLabel) : Quantification.Labels.Contains(input.NewLabel)) || (input.Reason?.Length ?? 0) > 2000) throw new ApiError(400, "INVALID_REVIEW", "复核类别或原因无效");
     await using var tx = await db.Database.BeginTransactionAsync(ct);
     var run = await db.AnalysisRuns.FromSqlInterpolated($"SELECT * FROM `AnalysisRuns` WHERE `Id` = {id} FOR UPDATE").SingleOrDefaultAsync(ct) ?? throw new ApiError(404, "NOT_FOUND", "任务不存在");
     if (run.Status != "Succeeded" || !await db.Cells.AnyAsync(c => c.Id == input.CellId && c.RunId == id, ct)) throw new ApiError(409, "INVALID_REVIEW", "只能复核此成功任务中的细胞");
     var version = (await db.ReviewRevisions.Where(r => r.RunId == id).MaxAsync(r => (int?)r.Version, ct) ?? 0) + 1;
+    if ((run.ModelVersion == Ki67Quantification.Model || input.Dimension == "ki67") && input.BaseReviewVersion == null) throw new ApiError(400, "REVIEW_VERSION_REQUIRED", "请提交当前复核版本");
+    if (input.BaseReviewVersion != null && input.BaseReviewVersion != version-1) throw new ApiError(409, "REVIEW_CONFLICT", "复核版本已变化，请载入最新结果后重试");
+    if (input.Dimension == "ki67")
+    {
+        var cell = await db.Cells.SingleAsync(c => c.Id == input.CellId && c.RunId == id, ct);
+        if (cell.Ki67Value == null || cell.Ki67Quality != "ok" || cell.QualityFlag != "ok" || Json.Read<Thresholds>(run.ThresholdsJson).Ki67 == null) throw new ApiError(409, "KI67_NOT_REVIEWABLE", "未检测或质控不通过，不能通过复核伪造有效信号");
+        if (string.IsNullOrWhiteSpace(input.Reason)) throw new ApiError(400, "REASON_REQUIRED", "Ki-67 状态修订需要原因");
+    }
     var revision = new ReviewRevision { RunId = id, Version = version };
-    db.ReviewRevisions.Add(revision); db.ReviewChanges.Add(new ReviewChange { RevisionId = revision.Id, CellId = input.CellId, NewLabel = input.NewLabel, Reason = input.Reason ?? "" });
+    db.ReviewRevisions.Add(revision); db.ReviewChanges.Add(new ReviewChange { RevisionId = revision.Id, CellId = input.CellId, Dimension = input.Dimension, NewLabel = input.NewLabel, Reason = input.Reason ?? "" });
     await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return Results.Created($"/api/analysis-runs/{id}/reviews", new { reviewVersion = version });
 });
-app.MapGet("/api/analysis-runs/{id:guid}/export", async (Guid id, int? reviewVersion, ResultService results, CancellationToken ct) => Results.File(await results.Export(id, reviewVersion, ct), "application/zip", $"oncomosaic-{id}.zip"));
+app.MapGet("/api/analysis-runs/{id:guid}/export", async (Guid id, int? reviewVersion, int? exportSchemaVersion, ResultService results, CancellationToken ct) => Results.File(await results.Export(id, reviewVersion, ct, exportSchemaVersion ?? 1), "application/zip", $"oncomosaic-{id}.zip"));
 
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDb>();
     await db.Database.MigrateAsync();
     var projectId = Guid.Parse("a1000000-0000-0000-0000-000000000001");
-    var imageId = Guid.Parse("a1000000-0000-0000-0000-000000000003");
     if (!await db.Projects.AnyAsync(p => p.Id == projectId)) { db.Projects.Add(new Project { Id = projectId, Name = "多标记组织 · 演示项目" }); await db.SaveChangesAsync(); }
-    var fixture = builder.Configuration["DEMO_FILE"] ?? "/demo/sample-spectral-mif.ome.tiff";
+    var fixture = builder.Configuration["DEMO_FILE"] ?? "/demo/sample-ki67.ome.tiff";
     var fixtureAssay = fixture.Replace(".ome.tiff", ".assay.json");
+    // A changed fixture is a new input; never overwrite prior images or their analyses.
+    var imageId = File.Exists(fixtureAssay) ? Guid.Parse(FileStore.Hash(fixtureAssay)[..32]) : Guid.Empty;
     if (File.Exists(fixture) && File.Exists(fixtureAssay) && !await db.Images.AnyAsync(i => i.Id == imageId))
     {
         var store = scope.ServiceProvider.GetRequiredService<FileStore>();
         var orphan = Path.GetDirectoryName(store.Resolve($"images/{imageId}/source.ome.tiff"))!;
         if (Directory.Exists(orphan)) Directory.Delete(orphan, true);
         await using var stream = File.OpenRead(fixture); await using var assayStream = File.OpenRead(fixtureAssay);
-        await scope.ServiceProvider.GetRequiredService<ImportService>().Import(projectId, "合成光谱 mIF · sample", "24 波段 OME-TIFF 与模拟单染对照；无患者来源。", stream, assayStream, CancellationToken.None, imageId);
+        await scope.ServiceProvider.GetRequiredService<ImportService>().Import(projectId, "Ki-67 五标记 · 合成演示", "24 波段 OME-TIFF；含 Ki-67 核内模拟信号与单染对照；无患者来源。", stream, assayStream, CancellationToken.None, imageId);
     }
 }
 app.Run();

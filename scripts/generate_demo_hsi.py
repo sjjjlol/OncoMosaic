@@ -9,25 +9,33 @@ import tifffile
 MARKERS = ('DAPI', 'panCK', 'CD3', 'CD8', 'autofluorescence')
 
 
-def spectra(waves):
+def spectra(waves, ki67=False):
     centers = (460, 540, 600, 670, 510)
     widths = (25, 30, 28, 26, 90)
+    if ki67:
+        centers = (460, 540, 600, 670, 710, 510)
+        widths = (25, 30, 28, 26, 14, 90)
     matrix = np.stack([np.exp(-.5 * ((waves - c) / s) ** 2) for c, s in zip(centers, widths)])
     return (matrix / matrix.max(axis=1, keepdims=True)).astype(np.float32)
 
 
-def generate(path: Path):
+def generate(path: Path, ki67=False):
+    markers = (*MARKERS[:-1], "Ki67", MARKERS[-1]) if ki67 else MARKERS
+    ki_rng = np.random.default_rng(20261002)
     rng = np.random.default_rng(20260929)
     height = width = 256
     yy, xx = np.mgrid[:height, :width]
     waves = np.linspace(420, 720, 24, dtype=np.float32)
-    reference = spectra(waves)
+    reference = spectra(waves, ki67)
+    if ki67:
+        # Lower synthetic detector gain for the larger panel; coefficients retain their scale.
+        reference *= .65
     tissue = ((xx - 128) / 113) ** 2 + ((yy - 128) / 104) ** 2 < 1
     necrosis = ((xx - 172) / 20) ** 2 + ((yy - 142) / 15) ** 2 < 1
     artifact = (xx > 89) & (xx < 99) & (yy > 64) & (yy < 103)
     valid = tissue & ~necrosis & ~artifact
-    maps = np.zeros((height, width, 5), dtype=np.float32)
-    maps[:, :, 4] = np.where(valid, .18, .005)
+    maps = np.zeros((height, width, len(markers)), dtype=np.float32)
+    maps[:, :, -1] = np.where(valid, .18, .005)
     truth_cells = []
     nucleus_labels = np.zeros((height, width), dtype=np.uint16)
     for cy in range(18, 245, 19):
@@ -43,9 +51,14 @@ def generate(path: Path):
             maps[:, :, 1] += halo * (.78 if epithelial else .025)
             maps[:, :, 2] += halo * (.77 if cd8_t else .025)
             maps[:, :, 3] += halo * (.72 if cd8_t else .025)
+            positive = bool(ki_rng.random() < (.55 if epithelial else .3))
+            if ki67:
+                maps[:, :, 4] += nucleus * (.85 if positive else .04)
             nucleus_labels[((xx-px)**2 + (yy-py)**2 < 4.0**2) & valid] = len(truth_cells) + 1
             truth_cells.append({'x': round(float(px), 2), 'y': round(float(py), 2), 'syntheticClass': 'epithelial' if epithelial else 'cd3-cd8' if cd8_t else 'other'})
-    maps[:, :, :4] *= valid[:, :, None]
+            if ki67:
+                truth_cells[-1].update(ki67Positive=positive, ki67Amplitude=.85 if positive else .04)
+    maps[:, :, :-1] *= valid[:, :, None]
     background = np.full(len(waves), .012, dtype=np.float32)
     cube = np.einsum('hwc,cb->hwb', maps, reference) + background
     cube += rng.normal(0, .004, cube.shape).astype(np.float32)
@@ -61,11 +74,15 @@ def generate(path: Path):
         'referenceProvenance': 'synthetic-single-stain-controls',
         'fovOriginPx': [0, 0], 'note': 'No patient or clinical validation data.'
     }
+    if ki67:
+        metadata.update(schema='spectral-mif-research-v2', assayId='dapi-panck-cd3-cd8-ki67-v2',
+                        calibrationId='synthetic-single-stain-ki67-v2', markers=list(markers),
+                        panelVersion='2', ki67Reagent='synthetic-no-antibody', measurementUnit='simulated-relative-intensity')
     path.parent.mkdir(parents=True, exist_ok=True)
-    controls_dir = path.parent / 'controls'
+    controls_dir = path.parent / ('controls-ki67' if ki67 else 'controls')
     controls_dir.mkdir(exist_ok=True)
     controls = {}
-    for index, marker in enumerate(MARKERS):
+    for index, marker in enumerate(markers):
         control_path = controls_dir / f'{marker}-single-stain.ome.tiff'
         signal = (np.broadcast_to((background + .55 * reference[index])[:, None, None], (24, 32, 32)) * 65535).astype(np.uint16).copy()
         tifffile.imwrite(control_path, signal, ome=True,
@@ -100,4 +117,6 @@ def generate(path: Path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=Path, default=Path('data/sample-spectral-mif.ome.tiff'))
-    generate(parser.parse_args().output)
+    parser.add_argument('--ki67', action='store_true', help='Generate the five-marker v2 panel')
+    args = parser.parse_args()
+    generate(args.output, args.ki67)

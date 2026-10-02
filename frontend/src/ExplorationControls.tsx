@@ -24,6 +24,7 @@ export function ExplorationControls(p: Props) {
         <span className="histogram-count">{bin.count}</span><span className="histogram-track"><i style={{height:`${Math.max(0,bin.count/maxCount*100)}%`}}/></span><small>{bin.min}–{bin.max}</small>
       </button>)}
     </div> : <p className="empty-distance">没有可配对对象，距离不可计算。</p>}
+    {p.selection.ki67Population && <p className="selection-note">Ki-67 对象群筛选：{p.selection.ki67Population} · {p.selection.ki67State||'全部状态'}（不改变统计分母）</p>}
     {p.selection.bin && <p className="selection-note">筛选距离 {p.selection.bin.min}–{p.selection.bin.max} µm 的起点对象；点击柱形查看对应连线。最后区间含上界。</p>}
     {p.onCell && <div className="comparison-object-list" aria-label={`${p.prefix}对象列表`}>
       {objects.slice(0,100).map(c=><button key={c.cellId} onClick={()=>p.onCell!(c)}><i style={{background:colors[c.effectiveLabels]}}/>#{c.localIndex} · {labels[c.effectiveLabels]}</button>)}

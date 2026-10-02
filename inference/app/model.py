@@ -14,6 +14,8 @@ from PIL import Image, ImageDraw
 from skimage import measure, morphology
 
 MODEL = 'spectral-mif-sim-v1'
+KI67_MODEL = 'spectral-mif-sim-v2'
+KI67_MARKERS = ('DAPI', 'panCK', 'CD3', 'CD8', 'Ki67', 'autofluorescence')
 MARKERS = ('DAPI', 'panCK', 'CD3', 'CD8', 'autofluorescence')
 MAX_CUBE = 256 * 1024 * 1024
 
@@ -39,7 +41,8 @@ def load_image(path: Path, assay_path: Path):
                 'backgroundSpectrum', 'imageSha256')
     if not isinstance(metadata, dict) or any(k not in metadata for k in required):
         raise ValueError('染色/采集/对照元数据缺失')
-    if metadata['schema'] != 'spectral-mif-research-v1' or metadata['source'] not in ('synthetic-no-patient-data', 'deidentified-research') or metadata['markers'] != list(MARKERS) or metadata['fovOriginPx'] != [0, 0]:
+    supported_panel = (metadata['schema'] == 'spectral-mif-research-v1' and metadata['markers'] == list(MARKERS)) or (metadata['schema'] == 'spectral-mif-research-v2' and metadata['markers'] in (list(MARKERS), list(KI67_MARKERS)))
+    if not supported_panel or metadata['source'] not in ('synthetic-no-patient-data', 'deidentified-research') or metadata['fovOriginPx'] != [0, 0]:
         raise ValueError('染色/采集元数据不兼容')
     if metadata['imageSha256'] != hashlib.sha256(path.read_bytes()).hexdigest():
         raise ValueError('图像与伴随元数据校验值不匹配')
@@ -70,7 +73,7 @@ def load_image(path: Path, assay_path: Path):
     reference = np.asarray(metadata['referenceSpectra'], dtype=np.float32)
     background = np.asarray(metadata['backgroundSpectrum'], dtype=np.float32)
     pixel = float(metadata['pixelSizeUm'])
-    if waves.shape != (bands,) or reference.shape != (5, bands) or background.shape != (bands,):
+    if waves.shape != (bands,) or reference.shape != (len(metadata['markers']), bands) or background.shape != (bands,):
         raise ValueError('波长或参考光谱维度与图像不一致')
     if not np.isfinite(cube).all() or not np.isfinite(waves).all() or not np.isfinite(reference).all() or not np.isfinite(background).all():
         raise ValueError('图像或参考光谱含非有限值')
@@ -78,8 +81,8 @@ def load_image(path: Path, assay_path: Path):
         raise ValueError('校准后的强度必须位于 0–1')
     if not (np.diff(waves) > 0).all() or not math.isfinite(pixel) or pixel <= 0 or abs(pixel-physical_x) > 1e-5 or abs(pixel-physical_y) > 1e-5:
         raise ValueError('波长或像素物理尺寸不一致')
-    if np.any(reference < 0) or np.any(background < 0) or np.linalg.matrix_rank(reference) < 5 or np.linalg.cond(reference) > 1e4:
-        raise ValueError('参考光谱无效或无法稳定区分五个信号')
+    if np.any(reference < 0) or np.any(background < 0) or np.linalg.matrix_rank(reference) < len(metadata['markers']) or np.linalg.cond(reference) > 1e4:
+        raise ValueError('参考光谱无效或无法稳定区分面板信号')
     return cube, waves, pixel, reference, background, metadata
 
 
@@ -95,7 +98,7 @@ def unmix(cube, reference, background):
 def tissue_masks(maps, cube):
     # Synthetic fixture: tissue has broad autofluorescence; saturation is an artifact.
     saturated = (cube >= .995).mean(axis=2) > .7
-    tissue = (maps[:, :, 4] >= .065) & ~saturated
+    tissue = (maps[:, :, -1] >= .065) & ~saturated
     tissue = morphology.remove_small_objects(tissue, min_size=24)
     return tissue.astype(bool), saturated
 
@@ -131,11 +134,14 @@ class SpectralMifSimulationAdapter:
             return self._analyze(image_key, assay_key, roi, run_id, model_version)
 
     def _analyze(self, image_key, assay_key, roi, run_id, model_version):
-        if model_version != MODEL:
+        if model_version not in (MODEL, KI67_MODEL):
             raise ValueError('不支持的模型版本')
         source = safe_path(self.root, image_key)
         assay_source = safe_path(self.root, assay_key)
         cube, _, _, reference, background, metadata = load_image(source, assay_source)
+        has_ki67 = 'Ki67' in metadata['markers']
+        if has_ki67 and model_version != KI67_MODEL:
+            raise ValueError('Ki67 面板需要 spectral-mif-sim-v2')
         x, y, w, h = (roi[k] for k in ('x', 'y', 'width', 'height'))
         if min(x, y) < 0 or min(w, h) <= 0 or x+w > cube.shape[1] or y+h > cube.shape[0]:
             raise ValueError('ROI 越界或为空')
@@ -153,6 +159,7 @@ class SpectralMifSimulationAdapter:
         labels = measure.label((maps[:, :, 0] >= .30) & valid_tissue)
         mask = np.zeros((h, w), dtype=np.int32)
         cells = []
+        ki67_channel_ok = float(residual[valid_tissue].mean()) <= .08 if valid_tissue.any() else False
         for region in measure.regionprops(labels):
             if not 5 <= region.area <= 400:
                 continue
@@ -169,11 +176,19 @@ class SpectralMifSimulationAdapter:
                               dapiValue=float(maps[:, :, 0][nucleus].mean()), panckValue=values[0],
                               cd3Value=values[1], cd8Value=values[2],
                               qualityFlag='crop-edge' if edge else 'ok', contour=coords))
+            if model_version == KI67_MODEL:
+                quality = ('crop-edge' if edge else 'channel-qc-failed' if not ki67_channel_ok else 'spectral-residual' if float(residual[nucleus].mean()) > .08 else 'saturated-signal' if np.any(crop[nucleus] >= .995) else 'ok') if has_ki67 else 'not-measured'
+                cells[-1].update(ki67Value=float(maps[:, :, 4][nucleus].mean()) if has_ki67 else None,
+                                 ki67Quality=quality, ki67ValidPixelCount=int(nucleus.sum()) if has_ki67 else 0)
         qc = dict(validTissuePx=int(valid_tissue.sum()), excludedPx=int(valid_tissue.size-valid_tissue.sum()),
                   saturatedPx=int(saturation.sum()), meanSpectralResidual=float(residual.mean()),
                   signalUnit=metadata['signalUnit'], boundaryMethod='nucleus-plus-3px; approximate, not whole-cell',
                   referenceProvenance=metadata['referenceProvenance'],
                   limitations=['synthetic data', 'deterministic simulation', 'no medical performance validation'])
+        if model_version == KI67_MODEL:
+            qc['ki67'] = dict(status='ok' if has_ki67 and ki67_channel_ok else 'channel-qc-failed' if has_ki67 else 'not-measured',
+                              measurementVersion='ki67-nuclear-mean-v1', compartment='nucleus', signalUnit='simulated-relative-intensity',
+                              residualLimit=.08, saturationLimit=.995)
         if qc['validTissuePx'] == 0:
             raise ValueError('ROI 中没有可分析组织')
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -181,10 +196,12 @@ class SpectralMifSimulationAdapter:
         try:
             (temp/'markers').mkdir()
             markers = []
-            for i, name in enumerate(MARKERS[:4]):
+            for i, name in enumerate(metadata['markers'][:-1]):
                 Image.fromarray((maps[:, :, i]*255).astype('uint8')).save(temp/f'markers/{name}.png')
                 markers.append(dict(name=name, displayKey=f'runs/{run_id}/markers/{name}.png'))
             np.save(temp/'nuclei-mask.npy', mask)
+            if has_ki67:
+                np.save(temp/'ki67-quantitative.npy', maps[:, :, 4].astype('<f4'))
             Image.fromarray((valid_tissue*255).astype('uint8')).save(temp/'valid-tissue.png')
             overlay = Image.new('RGBA', (w, h))
             draw = ImageDraw.Draw(overlay)
@@ -193,11 +210,13 @@ class SpectralMifSimulationAdapter:
             overlay.save(temp/'nuclei-overlay.png')
             (temp/'cells.json').write_text(json.dumps(cells, allow_nan=False))
             (temp/'qc.json').write_text(json.dumps(qc, allow_nan=False))
-            result = dict(runId=run_id, modelVersion=MODEL, roi=roi, width=w, height=h, markers=markers,
+            result = dict(runId=run_id, modelVersion=model_version, roi=roi, width=w, height=h, markers=markers,
                           maskKey=f'runs/{run_id}/nuclei-mask.npy', overlayKey=f'runs/{run_id}/nuclei-overlay.png',
                           tissueKey=f'runs/{run_id}/valid-tissue.png', qcKey=f'runs/{run_id}/qc.json',
                           validTissuePx=qc['validTissuePx'], cellsKey=f'runs/{run_id}/cells.json',
                           cellCount=len(cells), identity=identity)
+            if has_ki67:
+                result['ki67QuantitativeKey'] = f'runs/{run_id}/ki67-quantitative.npy'
             (temp/'manifest.json').write_text(json.dumps(result))
             temp.rename(out)
             return result

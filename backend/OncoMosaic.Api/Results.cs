@@ -19,16 +19,18 @@ public class ResultService(AppDb db, FileStore store)
         var revisions = await db.ReviewRevisions.AsNoTracking().Where(r => r.RunId == id).OrderBy(r => r.Version).ToListAsync(ct);
         var version = reviewVersion ?? revisions.LastOrDefault()?.Version ?? 0;
         if (version < 0 || (version > 0 && !revisions.Any(r => r.Version == version))) throw new ApiError(404, "VERSION_NOT_FOUND", "复核版本不存在");
-        var changes = await (from c in db.ReviewChanges.AsNoTracking() join r in db.ReviewRevisions.AsNoTracking() on c.RevisionId equals r.Id where r.RunId == id && r.Version <= version orderby r.Version select new { c.CellId, c.NewLabel, c.Reason, r.Version, r.CreatedAt }).ToListAsync(ct);
+        var changes = await (from c in db.ReviewChanges.AsNoTracking() join r in db.ReviewRevisions.AsNoTracking() on c.RevisionId equals r.Id where r.RunId == id && r.Version <= version orderby r.Version select new { c.CellId, c.Dimension, c.NewLabel, c.Reason, r.Version, r.CreatedAt }).ToListAsync(ct);
         var effective = new Dictionary<Guid, string>();
-        foreach (var c in changes) effective[c.CellId] = c.NewLabel;
+        var ki67Effective = new Dictionary<Guid, string>();
+        foreach (var c in changes) (c.Dimension == "ki67" ? ki67Effective : effective)[c.CellId] = c.NewLabel;
         var cells = await db.Cells.AsNoTracking().Where(c => c.RunId == id).OrderBy(c => c.LocalIndex).ToListAsync(ct);
         var thresholds = Json.Read<Thresholds>(run.ThresholdsJson);
-        var views = Quantification.Views(cells, thresholds, effective);
+        var views = Quantification.Views(cells, thresholds, effective, ki67Effective);
         return new(run, roi, image, views, Quantification.Calculate(views, roi, image.PixelSizeUm, run.ValidTissuePx, thresholds, version), changes.Cast<object>().ToArray());
     }
-    public async Task<byte[]> Export(Guid id, int? version, CancellationToken ct)
+    public async Task<byte[]> Export(Guid id, int? version, CancellationToken ct, int exportSchemaVersion = 1)
     {
+        if (exportSchemaVersion is not (1 or 2)) throw new ApiError(400, "INVALID_EXPORT_VERSION", "导出版本只支持 1 或 2");
         var s = await Snapshot(id, version, ct);
         using var memory = new MemoryStream();
         using (var zip = new ZipArchive(memory, ZipArchiveMode.Create, true))
@@ -42,11 +44,24 @@ public class ResultService(AppDb db, FileStore store)
                 csv.AppendLine(string.Join(',', c.CellId, c.LocalIndex, N(c.X), N(c.Y), c.AreaPx, N(values["dapi"]), N(values["panck"]), N(values["cd3"]), N(values["cd8"]), c.AutoLabels, c.EffectiveLabels, c.QualityFlag, s.Summary.ReviewVersion, Quantification.Notice));
             }
             Text("cells.csv", csv.ToString());
+            if (exportSchemaVersion == 2)
+            {
+                Text("ki67-cells.csv", Ki67Quantification.CellCsv(s.Cells, s.Summary.ReviewVersion));
+                Text("ki67-summary.csv", Ki67Quantification.SummaryCsv(s.Summary));
+                foreach (var kind in new[] { "Ki67", "Ki67-quantitative", "mask" })
+                {
+                    var artifact = await db.Artifacts.AsNoTracking().SingleOrDefaultAsync(a => a.RunId == id && a.Kind == kind, ct);
+                    if (artifact == null) continue;
+                    await using var source = File.OpenRead(store.Existing(artifact.FileKey));
+                    await using var destination = zip.CreateEntry(kind + (kind == "Ki67" ? ".png" : ".npy")).Open();
+                    await source.CopyToAsync(destination, ct);
+                }
+            }
             var q = s.Summary;
             Text("roi-summary.csv", "run_id,review_version,total,valid,excluded,unclassified,panck,cd3_cd8,cd3_only,negative,valid_tissue_area_mm2,panck_fraction,cd3_cd8_fraction,panck_density,cd3_cd8_density,mean_nearest_distance_um,notice\n" + string.Join(',', id, q.ReviewVersion, q.Counts.Total, q.Counts.Valid, q.Counts.Excluded, q.Counts.Unclassified, q.Counts.Panck, q.Counts.Cd3Cd8, q.Counts.Cd3Only, q.Counts.Negative, N(q.AreaMm2), q.PanckFraction is double pf ? N(pf) : "", q.Cd3Cd8Fraction is double cf ? N(cf) : "", N(q.PanckDensity), N(q.Cd3Cd8Density), q.MeanNearestDistanceUm is double d ? N(d) : "", Quantification.Notice) + "\n");
             var qc = Json.Read<object>(File.ReadAllText(store.Existing((await db.Artifacts.AsNoTracking().SingleAsync(a => a.RunId == id && a.Kind == "qc", ct)).FileKey)));
             Text("qc.json", Json.Write(qc));
-            Text("method.json", Json.Write(new { notice = Quantification.Notice, runId = id, imageSha256 = s.Image.Sha256, assaySha256 = s.Image.AssaySha256, acquisition = Json.Read<object>(s.Image.AcquisitionJson), roi = s.Roi, s.Image.PixelSizeUm, wavelengthsNm = Json.Read<double[]>(s.Image.WavelengthsJson), s.Run.ModelVersion, s.Run.AlgorithmVersion, q.Thresholds, q.ReviewVersion, validTissuePx = s.Run.ValidTissuePx, generatedAt = DateTime.UtcNow, measurements = new { dapi = "nuclear mean", markers = "nucleus plus 3px dilation excluding neighboring nuclei; approximate, not whole-cell segmentation", unmix = "fit supplied simulated single-stain spectra plus autofluorescence", tissue = "autofluorescence threshold and saturation exclusion; valid tissue denominator", distance = "CD3+CD8+ candidate to nearest distinct panCK+ object" }, summary = q, reviews = s.Reviews }));
+            Text("method.json", Json.Write(new { exportSchemaVersion, ki67Method = exportSchemaVersion == 2 ? Ki67Quantification.Method(q.Thresholds) : null, notice = Quantification.Notice, runId = id, imageSha256 = s.Image.Sha256, assaySha256 = s.Image.AssaySha256, acquisition = Json.Read<object>(s.Image.AcquisitionJson), roi = s.Roi, s.Image.PixelSizeUm, wavelengthsNm = Json.Read<double[]>(s.Image.WavelengthsJson), s.Run.ModelVersion, s.Run.AlgorithmVersion, q.Thresholds, q.ReviewVersion, validTissuePx = s.Run.ValidTissuePx, generatedAt = DateTime.UtcNow, measurements = new { dapi = "nuclear mean", markers = "nucleus plus 3px dilation excluding neighboring nuclei; approximate, not whole-cell segmentation", unmix = "fit supplied simulated single-stain spectra plus autofluorescence", tissue = "autofluorescence threshold and saturation exclusion; valid tissue denominator", distance = "CD3+CD8+ candidate to nearest distinct panCK+ object" }, summary = q, reviews = s.Reviews }));
             using var overlay = Image.Load<Rgba32>(store.Existing(s.Image.PreviewKey));
             overlay.Metadata.GetPngMetadata().TextData.Add(new PngTextData("Description", "Synthetic spectral mIF / Simulated analysis / NOT FOR DIAGNOSIS", "", ""));
             overlay.Metadata.GetPngMetadata().TextData.Add(new PngTextData("Analysis", $"runId={id}; reviewVersion={q.ReviewVersion}", "", ""));

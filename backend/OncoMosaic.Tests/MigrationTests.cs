@@ -17,7 +17,7 @@ public class MigrationTests
         using var db = new AppDb(options);
         // Generate the actual upgrade SQL without connecting to a database.
         var sql = db.GetService<IMigrator>().GenerateScript();
-        foreach (var column in new[] { "AcquisitionJson", "AssayKey", "AssaySha256", "Cd3Value", "ValidTissuePx" })
+        foreach (var column in new[] { "AcquisitionJson", "AssayKey", "AssaySha256", "Cd3Value", "ValidTissuePx", "Ki67Value", "Ki67Quality", "Ki67ValidPixelCount", "Dimension" })
             Assert.Contains($"`{column}`", sql);
     }
 }

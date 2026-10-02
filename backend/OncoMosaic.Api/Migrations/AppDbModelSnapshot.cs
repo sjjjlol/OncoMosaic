@@ -124,6 +124,16 @@ namespace OncoMosaic.Api.Migrations
                     b.Property<double>("DapiValue")
                         .HasColumnType("double");
 
+                    b.Property<string>("Ki67Quality")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("Ki67ValidPixelCount")
+                        .HasColumnType("int");
+
+                    b.Property<double?>("Ki67Value")
+                        .HasColumnType("double");
+
                     b.Property<int>("LocalIndex")
                         .HasColumnType("int");
 
@@ -177,6 +187,10 @@ namespace OncoMosaic.Api.Migrations
 
                     b.Property<Guid>("CellId")
                         .HasColumnType("char(36)");
+
+                    b.Property<string>("Dimension")
+                        .IsRequired()
+                        .HasColumnType("longtext");
 
                     b.Property<string>("NewLabel")
                         .IsRequired()

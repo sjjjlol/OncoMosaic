@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from tifffile import TiffFileError
-from .model import SpectralMifSimulationAdapter, MODEL
+from .model import SpectralMifSimulationAdapter, MODEL, KI67_MODEL
 
 app = FastAPI(title='OncoMosaic internal simulation service', version='1.0.0')
 adapter = SpectralMifSimulationAdapter(Path(os.environ.get('STORE_ROOT', '/store')))
@@ -56,10 +56,11 @@ class Manifest(StrictModel):
     cellsKey: str
     cellCount: int
     identity: dict
+    ki67QuantitativeKey: str | None = None
 
 @app.get('/v1/health')
 def health():
-    return {'status': 'ok', 'modelVersion': MODEL}
+    return {'status': 'ok', 'modelVersion': MODEL, 'modelVersions': [MODEL, KI67_MODEL]}
 
 @app.post('/v1/inspect', response_model=Metadata)
 def inspect(request: ImageRequest):

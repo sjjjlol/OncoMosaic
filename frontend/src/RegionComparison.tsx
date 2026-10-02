@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowDownToLine, X } from 'lucide-react';
 import { api, post } from './api';
+import { Ki67Panel } from './Ki67Panel';
 import { Viewer } from './Viewer';
 import { ExplorationControls } from './ExplorationControls';
 import { allObjects, downloadResponse, selectedObjects, selectedPairs, type ObjectSelection } from './exploration';
@@ -22,7 +23,7 @@ const metrics:Metric[]=[
 
 function ComparisonSide({name,image,result,selection,onSelection,showNeighbors,onShowNeighbors,commonMax}:{name:string;image:TissueImage;result:Exploration;selection:ObjectSelection;onSelection:(s:ObjectSelection)=>void;showNeighbors:boolean;onShowNeighbors:(v:boolean)=>void;commonMax:number}) {
   const [cellId,setCellId]=useState('');
-  const [channels,setChannels]=useState<Record<string,boolean>>({composite:true,DAPI:false,panCK:false,CD3:false,CD8:false});
+  const [channels,setChannels]=useState<Record<string,boolean>>({composite:true,DAPI:false,panCK:false,CD3:false,CD8:false,Ki67:false});
   const objects=selectedObjects(result.cells,result.nearestNeighbors,selection);
   const pairs=selectedPairs(result.nearestNeighbors,objects);
   const cell=result.cells.find(c=>c.cellId===cellId);
@@ -30,17 +31,18 @@ function ComparisonSide({name,image,result,selection,onSelection,showNeighbors,o
   const onCell=(c:Cell)=>setCellId(c.cellId);
   return <section className="comparison-side" aria-label={`${name}结果`}>
     <div className="comparison-side-heading"><h3>{name} · {result.roi.name}</h3><span>复核 v{result.summary.reviewVersion}</span></div>
-    <div className="comparison-channels">{['composite','DAPI','panCK','CD3','CD8'].map(c=><label key={c}><input type="checkbox" checked={channels[c]} onChange={e=>setChannels({...channels,[c]:e.target.checked})}/>{c==='composite'?'合成预览':c}</label>)}</div>
+    <div className="comparison-channels">{['composite','DAPI','panCK','CD3','CD8',...(image.capabilities?.ki67?['Ki67']:[])].map(c=><label key={c}><input type="checkbox" checked={channels[c]} onChange={e=>setChannels({...channels,[c]:e.target.checked})}/>{c==='composite'?'合成预览':c}</label>)}</div>
     <div className="comparison-viewer"><Viewer image={image} rois={[result.roi]} selectedRoi={result.roi} runId={result.runId} cells={result.cells} selectedCell={cellId}
       mode="pan" display="contour" channels={channels} opacity={.8} onDraft={()=>{}} onRoi={()=>{}} onCell={onCell} focusRoi testId={`${name}-viewer`}
       highlightedCellIds={objects.map(c=>c.cellId)} nearestNeighbors={pairs} showNeighbors={showNeighbors}/></div>
+    <Ki67Panel summary={result.summary} prefix={name} onSelection={onSelection}/>
     <ExplorationControls result={result} prefix={name} selection={selection} onSelection={onSelection} showNeighbors={showNeighbors} onShowNeighbors={onShowNeighbors} commonMax={commonMax} onCell={onCell}/>
     {cell&&<div className="comparison-cell" data-testid={`${name}-cell-detail`}>
       <strong>对象 #{cell.localIndex} · {labels[cell.effectiveLabels]}</strong>
-      <span>panCK {cell.intensities.panck.toFixed(3)} · CD3 {cell.intensities.cd3.toFixed(3)} · CD8 {cell.intensities.cd8.toFixed(3)}</span>
+      <span>panCK {cell.intensities.panck.toFixed(3)} · CD3 {cell.intensities.cd3.toFixed(3)} · CD8 {cell.intensities.cd8.toFixed(3)} · Ki-67 {cell.ki67?.value?.toFixed(3)??'未检测'}</span>
       {neighbor?<span>最近上皮候选 <button className="text-button" onClick={()=>setCellId(neighbor.targetCellId)}>#{neighbor.targetIndex}</button> · {neighbor.distanceUm.toFixed(2)} µm</span>:<span>{cell.effectiveLabels==='cd3-cd8'?'本 ROI 无可配对上皮候选对象。':'最近邻以 CD3⁺CD8⁺ 候选为起点。'}</span>}
     </div>}
-    <p className="comparison-side-note">排除 {result.summary.counts.excluded} · 无法判定 {result.summary.counts.unclassified} · 面板内阴性 {result.summary.counts.negative}<br/>阈值 panCK / CD3 / CD8：{Object.values(result.summary.thresholds).join(' / ')} · 任务 {result.runId.slice(0,8)}</p>
+    <p className="comparison-side-note">排除 {result.summary.counts.excluded} · 无法判定 {result.summary.counts.unclassified} · 面板内阴性 {result.summary.counts.negative}<br/>阈值 panCK / CD3 / CD8 / Ki-67：{Object.values(result.summary.thresholds).join(' / ')} · 任务 {result.runId.slice(0,8)}</p>
   </section>;
 }
 
@@ -98,7 +100,7 @@ export function RegionComparison(p:Props) {
     const ticket=++generation.current;setBusy(true);setError('');
     try {
       const pinned={a:{runId:result.a.runId,reviewVersion:result.a.summary.reviewVersion},b:{runId:result.b.runId,reviewVersion:result.b.summary.reviewVersion}};
-      const response=await fetch(`/api/images/${p.image.id}/comparisons/export`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pinned)});
+      const response=await fetch(`/api/images/${p.image.id}/comparisons/export?exportSchemaVersion=2`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pinned)});
       if(ticket===generation.current)await downloadResponse(response,`oncomosaic-comparison-v${pinned.a.reviewVersion}-v${pinned.b.reviewVersion}.zip`);
     } catch(e){if(ticket===generation.current)setError((e as Error).message);}
     finally{if(ticket===generation.current)setBusy(false);}
@@ -118,6 +120,7 @@ export function RegionComparison(p:Props) {
       {!result&&!error&&<p className="comparison-empty">选择两个已完成分析的不同区域，再载入比较。最新版本在载入时固定，后续复核不会改变当前快照。</p>}
       {result&&<>
         <p className={`comparison-scheme ${result.sameScheme?'':'mismatch'}`} data-testid="comparison-scheme">{result.sameScheme?'分析方案一致':'分析方案不一致'} · A 复核 v{result.a.summary.reviewVersion} / B 复核 v{result.b.summary.reviewVersion}</p>
+        <p className="comparison-definitions">Ki-67：{result.ki67?.comparable ? `上皮候选比例 A−B ${result.ki67.differencePercentagePoints.panck==null?'不可计算':result.ki67.differencePercentagePoints.panck.toFixed(2)+' 个百分点'}（局部描述性比较）` : result.ki67?.reasons.join('；')||'不可比较'}。各对象群的分母与覆盖率见下方。</p>
         <table className="comparison-table"><caption>点击数量、比例或密度高亮对应对象；点击距离显示配对连线。</caption><thead><tr><th>指标</th><th>区域 A · {result.a.roi.name}</th><th>区域 B · {result.b.roi.name}</th></tr></thead><tbody>
           {metrics.map(metric=><tr key={metric.name}><th>{metric.name}</th>{[{name:'区域 A',side:result.a,setSelection:setSelectionA,setLinks:setLinksA},{name:'区域 B',side:result.b,setSelection:setSelectionB,setLinks:setLinksB}].map(({name,side,setSelection,setLinks})=><td key={name}>{metric.filter?<button aria-label={`${name} ${metric.name}`} onClick={()=>{setSelection({label:metric.filter!,bin:null});if(metric.links)setLinks(true);}}>{metric.value(side)}</button>:metric.value(side)}</td>)}</tr>)}
         </tbody></table>

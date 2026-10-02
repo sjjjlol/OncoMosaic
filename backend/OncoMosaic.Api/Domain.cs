@@ -54,9 +54,9 @@ public class Roi
 }
 public record Thresholds([property: System.Text.Json.Serialization.JsonRequired] double Panck,
                          [property: System.Text.Json.Serialization.JsonRequired] double Cd3,
-                         [property: System.Text.Json.Serialization.JsonRequired] double Cd8)
+                         [property: System.Text.Json.Serialization.JsonRequired] double Cd8, double? Ki67 = null)
 {
-    public bool Valid() => double.IsFinite(Panck) && double.IsFinite(Cd3) && double.IsFinite(Cd8) && Panck is >= 0 and <= 1 && Cd3 is >= 0 and <= 1 && Cd8 is >= 0 and <= 1;
+    public bool Valid() => double.IsFinite(Panck) && double.IsFinite(Cd3) && double.IsFinite(Cd8) && Panck is >= 0 and <= 1 && Cd3 is >= 0 and <= 1 && Cd8 is >= 0 and <= 1 && (Ki67 == null || (double.IsFinite(Ki67.Value) && Ki67 is >= 0 and <= 1));
 }
 public class AnalysisRun
 {
@@ -97,6 +97,9 @@ public class Cell
     public double PanckValue { get; set; }
     public double Cd3Value { get; set; }
     public double Cd8Value { get; set; }
+    public double? Ki67Value { get; set; }
+    public string Ki67Quality { get; set; } = "not-measured";
+    public int Ki67ValidPixelCount { get; set; }
     public string QualityFlag { get; set; } = "ok";
     public string ContourJson { get; set; } = "[]";
 }
@@ -112,6 +115,7 @@ public class ReviewChange
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid RevisionId { get; set; }
     public Guid CellId { get; set; }
+    public string Dimension { get; set; } = "identity";
     public string NewLabel { get; set; } = "negative";
     public string Reason { get; set; } = "";
 }
@@ -156,9 +160,9 @@ public class ApiError(int status, string code, string message) : Exception(messa
 }
 public record InspectResult(int Width, int Height, int BandCount, double[] Wavelengths, double PixelSizeUm, string PreviewKey, JsonElement Acquisition);
 public record Marker(string Name, string DisplayKey);
-public record Manifest(Guid RunId, string ModelVersion, Rectangle Roi, int Width, int Height, Marker[] Markers, string MaskKey, string OverlayKey, string TissueKey, string QcKey, int ValidTissuePx, string CellsKey, int CellCount);
-public record MeasuredCell(int LocalIndex, double X, double Y, int AreaPx, double DapiValue, double PanckValue, double Cd3Value, double Cd8Value, string QualityFlag, double[][] Contour);
+public record Manifest(Guid RunId, string ModelVersion, Rectangle Roi, int Width, int Height, Marker[] Markers, string MaskKey, string OverlayKey, string TissueKey, string QcKey, int ValidTissuePx, string CellsKey, int CellCount, string? Ki67QuantitativeKey = null, JsonElement Identity = default);
+public record MeasuredCell(int LocalIndex, double X, double Y, int AreaPx, double DapiValue, double PanckValue, double Cd3Value, double Cd8Value, string QualityFlag, double[][] Contour, double? Ki67Value = null, string Ki67Quality = "not-measured", int Ki67ValidPixelCount = 0);
 public record RunInput(Guid ImageId, Guid RoiId, string ModelVersion, Thresholds Thresholds);
 public record RoiInput(string Name, int X, int Y, int Width, int Height, string RegionTag);
-public record ReviewInput(Guid CellId, string NewLabel, string? Reason);
+public record ReviewInput(Guid CellId, string NewLabel, string? Reason, string Dimension = "identity", int? BaseReviewVersion = null);
 public record ProjectInput(string Name);
