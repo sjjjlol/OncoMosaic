@@ -12,3 +12,7 @@ frontend/test-results/
 frontend/playwright-report/
 *.log
 *.tsbuildinfo
+
+# Local IDE settings and personal source documents
+.idea/
+/docs/Elekta/*.pdf

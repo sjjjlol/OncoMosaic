@@ -14,6 +14,8 @@
 
 准备项目答辩或面试，可阅读 [理想平台介绍与 40 个追问](docs/guide/06-面试话术与追问.md)，并结合 [平台架构与数据模型](docs/guide/01-项目架构与数据模型.md) 理解各模块的分工。面试材料按目标方案组织，实际成果以交付记录为准。
 
+完整资料入口：[文档导航](docs/README.md)，包含工程架构、业务学习、面试讲解与独立练习。
+
 ## .NET 架构学习
 
 后端采用 Domain / Application / Infrastructure / Api 四层模块化单体。按设计与开发顺序阅读 [工程实践文档](docs/architecture/README.md)，包含类职责、事务、后台任务恢复、测试、运行和扩展练习；实际验证结果见 [验证记录](docs/architecture/07-verification.md)。
