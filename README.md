@@ -14,6 +14,10 @@
 
 准备项目答辩或面试，可阅读 [理想平台介绍与 40 个追问](docs/guide/06-面试话术与追问.md)，并结合 [平台架构与数据模型](docs/guide/01-项目架构与数据模型.md) 理解各模块的分工。面试材料按目标方案组织，实际成果以交付记录为准。
 
+## .NET 架构学习
+
+后端采用 Domain / Application / Infrastructure / Api 四层模块化单体。按设计与开发顺序阅读 [工程实践文档](docs/architecture/README.md)，包含类职责、事务、后台任务恢复、测试、运行和扩展练习；实际验证结果见 [验证记录](docs/architecture/07-verification.md)。
+
 ## Ki-67 功能
 
 平台已加入 Ki-67 核内模拟测量，在上皮与 T 细胞候选身份之外记录独立的增殖标记状态，支持按对象群计算阳性比例、回图复核及固定版本比较。完整方案见 [Ki-67 功能设计](docs/Ki67功能设计.md)，包括统计分母、质控、热点分析、接口扩展和分阶段验收。当前已实现首期 ROI 统计、独立复核、对象联动与 v2 导出；热点等后续目标尚未实现。操作和实际 API 见 [Ki-67 实施说明](docs/Ki67实施说明.md)。
@@ -28,7 +32,7 @@ docker compose up --build -d
 
 打开 [http://localhost:8088](http://localhost:8088)。首次启动会迁移 MySQL 并导入 `data/sample-ki67.ome.tiff` 与对应 `.assay.json`。数据库和分析文件保存在 Docker 卷中；`docker compose down` 不删除它们。
 
-API Dockerfile 在 Apple Silicon 虚拟化环境关闭 .NET Arm64 SVE 指令路径，以避开 SDK 构建时可能出现的 `Illegal instruction`；本地重建已验证。背景见 [.NET runtime 问题记录](https://github.com/dotnet/runtime/issues/122608)。
+API Dockerfile 在 Apple Silicon 虚拟化环境关闭 .NET 硬件指令优化并串行还原依赖，以避开 SDK 构建时可能出现的 `Illegal instruction`；本地重建已验证。背景见 [.NET runtime 问题记录](https://github.com/dotnet/runtime/issues/122608)。
 
 如果机器上留有旧版 NPZ 演示数据，新版页面只列出带新版 assay 文件的图像；**不会自动删除旧数据库记录或卷**。需要全新演示环境时，可先备份，再由使用者明确执行 `docker compose down -v`；这会删除本项目的数据库和结果卷。
 
@@ -72,7 +76,10 @@ Ki-67 独立于身份类别，按选定对象群计算 P/(P+N)，无法判定和
 ## 工程结构
 
 - `frontend/`：React 查看器、导入、阈值、对象探索、双 ROI 对比、复核和导出。
-- `backend/OncoMosaic.Api/`：ASP.NET Core API、MySQL、持久任务、结果校验与统计。
+- `backend/OncoMosaic.Domain/`：业务模型、状态转换、复核规则与纯量化计算。
+- `backend/OncoMosaic.Application/`：工作区、分析、复核、结果用例与外部能力接口。
+- `backend/OncoMosaic.Infrastructure/`：EF Core/MySQL、迁移、Python 适配、文件和导出。
+- `backend/OncoMosaic.Api/`：HTTP 入口、后台宿主、异常映射与依赖装配。
 - `inference/`：FastAPI 的 OME-TIFF 输入校验和确定性光谱 mIF 模拟分析。
 - `scripts/generate_demo_hsi.py`：图像、伴随文件、对照和独立真值生成器。
 - `docs/`：架构、医学边界和验收记录。
@@ -81,7 +88,7 @@ Ki-67 独立于身份类别，按选定对象群计算 P/(P+N)，无法判定和
 
 ```bash
 .venv/bin/python -m pytest inference/tests -q
-dotnet test backend/OncoMosaic.Tests
+dotnet test backend/OncoMosaic.slnx
 cd frontend && npm test && npm run build && npm run test:e2e
 cd ..
 python3 scripts/verify_e2e.py

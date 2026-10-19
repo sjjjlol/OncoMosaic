@@ -1,0 +1,1 @@
+global using OncoMosaic.Domain;

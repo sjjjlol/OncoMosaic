@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="OncoMosaic.Api/OncoMosaic.Api.csproj" />
+  <Project Path="OncoMosaic.Application/OncoMosaic.Application.csproj" />
+  <Project Path="OncoMosaic.Domain/OncoMosaic.Domain.csproj" />
+  <Project Path="OncoMosaic.Infrastructure/OncoMosaic.Infrastructure.csproj" />
+  <Project Path="OncoMosaic.Tests/OncoMosaic.Tests.csproj" />
+</Solution>

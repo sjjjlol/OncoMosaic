@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../OncoMosaic.Domain/OncoMosaic.Domain.csproj" />
+  </ItemGroup>
+</Project>

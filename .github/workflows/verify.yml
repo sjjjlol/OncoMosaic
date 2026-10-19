@@ -14,10 +14,14 @@ jobs:
         with: {node-version: '22'}
       - run: pip install -r inference/requirements.txt
       - run: python -m pytest inference/tests -q
-      - run: dotnet test backend/OncoMosaic.Tests
+      - run: dotnet restore backend/OncoMosaic.slnx --locked-mode
+      - run: dotnet test backend/OncoMosaic.slnx --no-restore
       - run: npm ci && npm test && npm run build
         working-directory: frontend
-      - run: docker compose up --build -d --wait --wait-timeout 180
+      - run: docker compose -f compose.yaml -f compose.test.yaml up --build -d --wait --wait-timeout 180
+      - run: dotnet test backend/OncoMosaic.slnx --no-restore
+        env:
+          ONCOMOSAIC_TEST_DATABASE: "Server=127.0.0.1;Port=13316;User=root;Password=local-root-demo-only;AllowPublicKeyRetrieval=True"
       - run: python scripts/verify_e2e.py --faults
       - run: python scripts/verify_comparison.py
       - run: npx playwright install --with-deps chromium && npm run test:e2e

@@ -1,0 +1,5 @@
+# For database integration tests only. Never expose the database in the normal deployment.
+services:
+  db:
+    ports:
+      - "127.0.0.1:${TEST_DB_PORT:-13316}:3306"
